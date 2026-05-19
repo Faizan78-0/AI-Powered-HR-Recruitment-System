@@ -1,158 +1,198 @@
-import { NextResponse } from "next/server";
-import { connectDB } from "@/lib/db";
-import Job from "@/modal/job.modal";
-import { cookies } from "next/headers";
-import jwt from "jsonwebtoken";
-import { verifyToken } from "@/Utils/verifytoken";
+import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
-export const dynamic = "force-dynamic";
+import { cookies } from "next/headers";
 
-// Adjust path as needed
+import Job from "@/modal/job.modal";
+import { connectDB } from "@/lib/db";
+import { verifyToken } from "@/Utils/verifytoken";
+import type { JobStatus, PaginatedResponse, Job as IJob } from "@/types/index";
 
-async function getAuth(req: Request) {
+/**
+ * Authentication Helper
+ */
+async function getAuth() {
   const cookieStore = await cookies();
   const token = cookieStore.get("token")?.value;
   if (!token) return null;
   return verifyToken(token) as { userId: string } | null;
 }
 
-export async function GET(req: Request) {
+// ── GET: FETCH JOBS (WITH FILTERS) ──────────────────────────────────────────
+export async function GET(req: NextRequest) {
   try {
     await connectDB();
-    const decoded = await getAuth(req);
-
-    if (!decoded || !decoded.userId) {
+    const auth = await getAuth();
+    if (!auth?.userId)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get("search")?.trim() ?? "";
+    const status = searchParams.get("status") as JobStatus | null;
+    const page = Math.max(1, Number(searchParams.get("page") ?? 1));
+    const limit = Math.min(
+      100,
+      Math.max(1, Number(searchParams.get("limit") ?? 10))
+    );
+    const skip = (page - 1) * limit;
+
+    // Filter by logged-in recruiter for security
+    const filter: any = {
+      recruiterId: new mongoose.Types.ObjectId(auth.userId),
+    };
+
+    if (status) filter.status = status;
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { company: { $regex: search, $options: "i" } },
+      ];
     }
 
-    // SECURITY FIX: Filter by recruiterId so users can't see each other's jobs
-    const recruiterId = new mongoose.Types.ObjectId(decoded.userId);
+    const [rawData, total] = await Promise.all([
+      Job.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Job.countDocuments(filter),
+    ]);
 
-    const jobs = await Job.find({ recruiterId })
-      .select("title company location salary type status createdAt")
-      .sort({ createdAt: -1 })
-      .lean();
+    // Map through the jobs to strip out sensitive/unwanted fields
+    const sanitizedData = rawData.map((job: any) => {
+      const { recruiterId, _id, ...rest } = job;
 
-    // Map the MongoDB _id to a frontend-friendly 'id' string
-    const formattedJobs = jobs.map((job: any) => ({
-      ...job,
-      id: job._id.toString(),
-      _id: undefined,
-    }));
+      return rest;
+    });
 
-    return NextResponse.json(formattedJobs, { status: 200 });
-  } catch (error: any) {
-    console.error("GET JOBS ERROR:", error.message);
+    const response: PaginatedResponse<Omit<IJob, "recruiterId">> = {
+      data: sanitizedData as any,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    };
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error("[JOBS_GET]", error);
     return NextResponse.json(
-      { success: false, message: "Internal Server Error" },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }
 }
-export async function POST(req: Request) {
+
+// ── POST: CREATE NEW JOB ─────────────────────────────────────────────────────
+export async function POST(req: NextRequest) {
   try {
     await connectDB();
-    const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
-    const decoded: any = jwt.verify(token!, process.env.JWT_SECRET!);
+    const auth = await getAuth();
+    if (!auth?.userId)
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
 
-    // The body MUST contain title, company, location, description, AND salary
+    // Required Field Validation
+    const required = ["title", "company", "location", "type", "description"];
+    for (const field of required) {
+      if (!body[field])
+        return NextResponse.json(
+          { error: `${field} is required` },
+          { status: 400 }
+        );
+    }
+
     const newJob = await Job.create({
       ...body,
-
-      recruiterId: decoded.userId,
+      recruiterId: new mongoose.Types.ObjectId(auth.userId),
+      status: body.status || "DRAFT",
     });
 
-    return NextResponse.json({ status: 201, message: "success" });
-  } catch (error: any) {
-    // This is where your "salary required" error was coming from
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ message: "job post" }, { status: 201 });
+  } catch (error) {
+    console.error("[JOBS_POST]", error);
+    return NextResponse.json(
+      { error: "Failed to create job" },
+      { status: 500 }
+    );
   }
 }
 
-export async function PUT(req: Request) {
+// ── PATCH: UPDATE JOB (WITH OWNERSHIP CHECK) ──────────────────────────────────
+// ── PATCH: UPDATE JOB ──────────────────────────────────
+
+export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
+    const auth = await getAuth();
+    if (!auth?.userId)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // 1. Authenticate user
-    const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
-    const decoded: any = token ? verifyToken(token) : null;
-
-    if (!decoded || !decoded.userId) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2. Get Job ID from URL query
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    const body = await req.json();
 
-    if (!id) {
+    // Look for ID in URL first, then fall back to body
+    const id = searchParams.get("id") || body.id || body._id;
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
-        { message: "Job ID is required" },
+        { error: "Invalid or missing Job ID" },
         { status: 400 }
       );
     }
 
-    // 3. Parse update data from body
-    const updates = await req.json();
-
-    // SECURITY: Prevent users from changing the recruiterId or _id via the body
-    delete updates.recruiterId;
-    delete updates._id;
-
-    // 4. Update ONLY if recruiterId matches (Ownership Check)
+    // Security: Filter by _id AND recruiterId
     const updatedJob = await Job.findOneAndUpdate(
-      { _id: id, recruiterId: decoded.userId }, // Critical security filter
-      { $set: updates }, // Only updates the fields provided in JSON
-      { new: true, runValidators: true } // Return the new doc & check schema rules
-    );
+      { _id: id, recruiterId: auth.userId },
+      { $set: body },
+      { new: true, runValidators: true }
+    ).lean();
 
     if (!updatedJob) {
       return NextResponse.json(
-        { message: "Job not found or you don't have permission" },
+        { error: "Job not found or access denied" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Job updated successfully",
-      job: updatedJob,
-    });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ message: "job update" });
+  } catch (error) {
+    console.error("PATCH_ERROR:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
-// Example of a Secure Delete
-export async function DELETE(req: Request) {
+// ── DELETE: REMOVE JOB ───────────────────────────────────────────────────────
+export async function DELETE(req: NextRequest) {
   try {
     await connectDB();
-    const decoded = await getAuth(req);
-    const { searchParams } = new URL(req.url);
-    const jobId = searchParams.get("id");
-
-    if (!decoded)
+    const auth = await getAuth();
+    if (!auth?.userId)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-    // This ensures that even if a hacker knows a Job ID,
-    // they can't delete it unless their recruiterId matches.
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid Job ID" }, { status: 400 });
+    }
+
+    // Security: Only delete if the job belongs to this recruiter
     const deletedJob = await Job.findOneAndDelete({
-      _id: jobId,
-      recruiterId: decoded.userId,
+      _id: id,
+      recruiterId: auth.userId,
     });
 
     if (!deletedJob) {
       return NextResponse.json(
-        { message: "Job not found or access denied" },
+        { error: "Job not found or access denied" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ message: "Deleted" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    console.error("[JOBS_DELETE]", error);
+    return NextResponse.json(
+      { error: "Failed to delete job" },
+      { status: 500 }
+    );
   }
 }

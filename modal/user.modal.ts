@@ -3,6 +3,7 @@ import mongoose, { Document, Model, Schema } from "mongoose";
 export type UserRole = "Recruiter" | "job seeker";
 
 export interface User extends Document {
+  _id: mongoose.Types.ObjectId;
   Name: string;
   email: string;
   password: string;

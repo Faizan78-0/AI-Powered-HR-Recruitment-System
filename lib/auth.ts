@@ -1,11 +1,12 @@
 import { verifyToken } from "@/Utils/verifytoken";
 import { jwtVerify, SignJWT } from "jose";
 import { cookies } from "next/headers";
+import { NextRequest } from "next/server";
 
 export interface User {
   id: string;
   email: string;
-  name: string;
+  Name: string;
   role: "admin" | "recruiter" | "hiring_manager";
   department?: string;
   avatar?: string;
@@ -25,7 +26,7 @@ export async function createSession(user: User): Promise<string> {
   const token = await new SignJWT({
     id: user.id,
     email: user.email,
-    name: user.name,
+    name: user.Name,
     role: user.role,
     department: user.department,
   })
@@ -37,21 +38,29 @@ export async function createSession(user: User): Promise<string> {
 }
 
 // ─── Verify JWT session ───────────────────────────────────────────────
-export async function getSession(token: string): Promise<Session | null> {
+export async function getSession({ req }: { req: NextRequest }): Promise<any | null> {
   try {
+    // 1. Extract token from cookies (adjust "token" to match your cookie name)
+    const token = req.cookies.get("token")?.value;
+
+    if (!token) return null;
+
+    // 2. Verify the JWT
     const { payload } = await jwtVerify(token, secret);
 
+    // 3. Return the session object
     return {
       user: {
         id: payload.id as string,
         email: payload.email as string,
-        name: payload.name as string,
-        role: payload.role as User["role"],
+        name: payload.name as string, // Note: standard naming is 'name'
+        role: payload.role as any,
         department: payload.department as string | undefined,
       },
       expiresAt: (payload.exp as number) * 1000,
     };
-  } catch {
+  } catch (error) {
+    // console.error("JWT Verification failed:", error);
     return null;
   }
 }

@@ -7,9 +7,12 @@ const ApplicationSchema = new mongoose.Schema({
   candidateName: String,
   jobRole: String,
   status: String,
-  appliedAt: { type: Date, default: Date.now }
+  appliedAt: { type: Date, default: Date.now },
 });
 
 export const Job = mongoose.models.Job || mongoose.model("Job", JobSchema);
-export const Candidate = mongoose.models.Candidate || mongoose.model("Candidate", CandidateSchema);
-export const Application = mongoose.models.Application || mongoose.model("Application", ApplicationSchema);
+export const Candidate =
+  mongoose.models.Candidate || mongoose.model("Candidate", CandidateSchema);
+export const Application =
+  mongoose.models.Application ||
+  mongoose.model("Application", ApplicationSchema);

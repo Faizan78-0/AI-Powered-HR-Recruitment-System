@@ -1,9 +1,11 @@
 "use client";
 import React, { useEffect } from "react";
 import { useUser } from "@/context/userContext";
-import { LuChevronDown, LuBell } from "react-icons/lu"; // Added LuBell
-import Link from "next/link"; // For navigation
+import { LuChevronDown } from "react-icons/lu"; 
+import Link from "next/link"; 
 import { useRouter } from "next/navigation";
+import NotificationBell from "../shared/notificationbell";
+
 export default function TopBar() {
   const { user, userProfile, isCheckingAuth } = useUser();
   const router = useRouter();
@@ -25,12 +27,11 @@ export default function TopBar() {
     <header className="h-16 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex items-center justify-between px-8 sticky top-0 z-30 transition-colors duration-300">
       <div className="flex-1" /> {/* Spacer */}
       <div className="flex items-center gap-2 sm:gap-5">
-        {/* Notification Icon */}
-        <button className="relative p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors group">
-          <LuBell className="w-5 h-5 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
-          {/* Notification Badge Dot */}
-          <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 border-2 border-white dark:border-gray-950 rounded-full"></span>
-        </button>
+        
+        {/* FIX: Changed from <button> to a <div> container to eliminate nesting runtime warnings */}
+        <div className="relative">
+          <NotificationBell />
+        </div>
 
         {user ? (
           /* Profile Link - Redirects to /profile */

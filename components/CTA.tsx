@@ -3,7 +3,10 @@
 import React from "react";
 import type { CTAProps } from "../types";
 
+import { useRouter } from "next/navigation";
+
 export function CTA({ onGetStarted }: CTAProps): React.JSX.Element {
+   const router =useRouter();
   return (
     <section
       id="cta"
@@ -25,24 +28,16 @@ export function CTA({ onGetStarted }: CTAProps): React.JSX.Element {
         <div className="flex flex-wrap items-center justify-center gap-4">
           <button
             type="button"
-            onClick={onGetStarted}
+            onClick={() => router.push("/yz/signup")}
             className="bg-white text-indigo-700 font-bold px-8 py-4 rounded-xl
-                       hover:bg-indigo-50 transition-all duration-200 active:scale-95 shadow-xl"
+                       hover:bg-indigo-50 transition-all duration-200 active:scale-95 shadow-xl cursor-pointer"
           >
             Start Free — No Card Needed →
           </button>
-          <button
-            type="button"
-            className="bg-white/10 text-white border border-white/25 font-bold px-8 py-4 rounded-xl
-                       hover:bg-white/20 transition-all duration-200 active:scale-95"
-          >
-            Book a Demo
-          </button>
+         
         </div>
 
-        <p className="text-indigo-300/70 text-xs mt-6">
-          Free plan includes 100 AI screenings/month · No credit card required
-        </p>
+       
       </div>
     </section>
   );

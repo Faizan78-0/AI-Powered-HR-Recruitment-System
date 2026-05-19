@@ -1,67 +1,59 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import User from "@/modal/user.modal";
-import { cookies } from "next/headers";
-import mongoose from "mongoose";
-import { verifyToken } from "@/Utils/verifytoken";
+import { getSession } from "@/lib/auth"; 
 
-export async function POST(req: Request) {
+export async function GET(req: NextRequest) {
+  try {
+    // 1. Ensure connectDB does not expect 'req'
+    await connectDB();
+
+    // 2. Fix: Most getSession helpers in Next.js 13+ (App Router) 
+    // expect an object { req } or are called without arguments if using headers()
+    const session = await getSession({ req }); 
+
+    // if (!session?.user?.id) {
+    //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // }
+
+    const profile = await User.findOne({ userId: session.user.id }).lean();
+    return NextResponse.json(profile || {});
+  } catch (error) {
+    console.error("GET_RECRUITER_SETTINGS_ERROR:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
 
-    const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
+    // 2. Fix: Apply the same session fix here
+    // const session = await getSession({ req });
 
-    if (!token) {
-      return NextResponse.json({ message: "No Token" }, { status: 401 });
-    }
+    // if (!session?.user?.id) {
+    //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // }
 
-    const decoded = verifyToken(token);
-    const id = decoded.userId;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ message: "Invalid User ID" }, { status: 400 });
-    }
-
-    // Parse the body for updates
     const body = await req.json();
-    const { Name, imageUrl, bio, companyName } = body;
 
-    // Update user and return the new document
-    // We use { new: true } to get the updated object back
-    const updatedUser = await User.findByIdAndUpdate(
-      id,
-      {
+    const updated = await User.findOneAndUpdate(
+      // { userId: session.user.id },
+      { 
         $set: {
-          Name,
-          imageUrl,
-          bio, // Assuming these fields exist in your schema
-          companyName,
-        },
+          company: body.company,
+          jobTitle: body.jobTitle,
+        
+          website: body.website,
+          bio: body.bio
+        }
       },
-      { new: true, runValidators: true }
-    ).select("-password");
-
-    if (!updatedUser) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 });
-    }
-
-    return NextResponse.json(
-      {
-        message: "Profile updated successfully",
-        user: {
-          Name: updatedUser.Name,
-          imageUrl: updatedUser.imageUrl,
-          role: updatedUser.role,
-        },
-      },
-      { status: 200 }
+      { new: true, upsert: true, runValidators: true }
     );
-  } catch (error: any) {
-    console.error("Update Error:", error);
-    return NextResponse.json(
-      { message: "Failed to update profile" },
-      { status: 500 }
-    );
+
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error("PATCH_RECRUITER_SETTINGS_ERROR:", error);
+    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
   }
 }

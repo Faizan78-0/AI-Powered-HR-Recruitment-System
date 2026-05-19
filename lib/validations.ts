@@ -8,19 +8,23 @@ import type {
   InterviewType,
   InterviewStatus,
 } from "@/types";
+
 export const cn = (...i: ClassValue[]) => twMerge(clsx(i));
+
 export const fmt$ = (n: number) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(n);
+
 export const fmtDate = (d: string | Date) =>
   new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   }).format(new Date(d));
+
 export const fmtDateTime = (d: string | Date) =>
   new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -29,13 +33,19 @@ export const fmtDateTime = (d: string | Date) =>
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(d));
-export const initials = (n: string) =>
-  n
-    .split(" ")
+
+// FIXED: Added a check for 'n'. Returns empty string or fallback if n is null/undefined.
+export const initials = (n?: string | null) => {
+  if (!n) return "";
+  return n
+    .trim()
+    .split(/\s+/) // Splits by any whitespace to handle double spaces
     .map((x) => x[0])
     .join("")
     .toUpperCase()
     .slice(0, 2);
+};
+
 export const parseJ = <T>(s: string, fb: T): T => {
   try {
     return JSON.parse(s) as T;
@@ -43,6 +53,7 @@ export const parseJ = <T>(s: string, fb: T): T => {
     return fb;
   }
 };
+
 export const salary = (mn?: number | null, mx?: number | null) =>
   !mn && !mx
     ? "Competitive"
@@ -51,6 +62,7 @@ export const salary = (mn?: number | null, mx?: number | null) =>
     : mn
     ? `From ${fmt$(mn)}`
     : `Up to ${fmt$(mx!)}`;
+
 export const ago = (d: string | Date) => {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
   if (s < 60) return "just now";
@@ -61,6 +73,7 @@ export const ago = (d: string | Date) => {
   const dy = Math.floor(h / 24);
   return dy < 30 ? `${dy}d ago` : fmtDate(d);
 };
+
 export const APP_CFG: Record<
   ApplicationStatus,
   { label: string; color: string; bg: string }
@@ -86,6 +99,7 @@ export const APP_CFG: Record<
   REJECTED: { label: "Rejected", color: "text-red-700", bg: "bg-red-100" },
   WITHDRAWN: { label: "Withdrawn", color: "text-gray-600", bg: "bg-gray-100" },
 };
+
 export const JOB_CFG: Record<
   JobStatus,
   { label: string; color: string; bg: string }
@@ -96,6 +110,7 @@ export const JOB_CFG: Record<
   CLOSED: { label: "Closed", color: "text-red-700", bg: "bg-red-100" },
   FILLED: { label: "Filled", color: "text-blue-700", bg: "bg-blue-100" },
 };
+
 export const IV_CFG: Record<
   InterviewStatus,
   { label: string; color: string; bg: string }
@@ -109,6 +124,7 @@ export const IV_CFG: Record<
   CANCELLED: { label: "Cancelled", color: "text-red-700", bg: "bg-red-100" },
   NO_SHOW: { label: "No Show", color: "text-orange-700", bg: "bg-orange-100" },
 };
+
 export const JOB_TYPE_L: Record<JobType, string> = {
   FULL_TIME: "Full-time",
   PART_TIME: "Part-time",
@@ -116,6 +132,7 @@ export const JOB_TYPE_L: Record<JobType, string> = {
   INTERNSHIP: "Internship",
   REMOTE: "Remote",
 };
+
 export const EXP_L: Record<ExperienceLevel, string> = {
   ENTRY: "Entry Level",
   MID: "Mid Level",
@@ -123,6 +140,7 @@ export const EXP_L: Record<ExperienceLevel, string> = {
   LEAD: "Lead",
   EXECUTIVE: "Executive",
 };
+
 export const IV_TYPE_L: Record<InterviewType, string> = {
   PHONE_SCREEN: "Phone Screen",
   VIDEO_CALL: "Video Call",
@@ -131,6 +149,7 @@ export const IV_TYPE_L: Record<InterviewType, string> = {
   FINAL_INTERVIEW: "Final Interview",
   PANEL: "Panel Interview",
 };
+
 export const AVAIL_L: Record<string, string> = {
   IMMEDIATE: "Immediately",
   "2_WEEKS": "2 Weeks Notice",

@@ -9,6 +9,7 @@ import { useAuthStore } from "@/Authstore/store";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 
+
 export default function login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -147,6 +148,7 @@ export default function login() {
               Sign up
             </Link>
           </p>
+         
         </div>
       </motion.div>
     </div>

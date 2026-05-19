@@ -23,7 +23,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Developed with ❤️ by [Your Name]
 This is a comprehensive, professional `README.md` designed for a modern AI-powered HR Recruitment System (like the one we’ve been building). It covers the tech stack, AI capabilities, and system architecture.
 
 ---
@@ -77,10 +76,10 @@ An intelligent, full-stack recruitment platform designed to automate the screeni
 
 1. **Clone the repository**
 
-   ```bash
-   git clone https://github.com/your-username/ai-hr-system.git
-   cd hr-recruitment-ssytem
-   ```
+   bash
+   git clone https://github.com/MAZHARFA/hr-recruitment-system.git
+   cd hr-recruitment-system
+   
 
 2.**Install dependencies**
 
@@ -88,7 +87,4 @@ An intelligent, full-stack recruitment platform designed to automate the screeni
 
     npm run dev
 
-```
 
-```
-````

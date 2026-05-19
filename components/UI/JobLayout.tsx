@@ -18,7 +18,7 @@ import { AUTH_URL, useAuthStore } from "@/Authstore/store";
 import toast from "react-hot-toast";
 import { BsChat } from "react-icons/bs";
 import { MdOutlineAssignmentInd } from "react-icons/md";
-import { Search } from "lucide-react";
+import { Search, ZapIcon } from "lucide-react";
 
 interface MenuItem {
   name: string;
@@ -43,7 +43,7 @@ export default function SideBar() {
     try {
       await logout();
       toast.success("Logout successfully");
-      router.push("/yz/login");
+      router.push("/");
     } catch (err) {
       toast.error("Logout failed");
     }
@@ -74,6 +74,7 @@ export default function SideBar() {
         }`}
       >
         <div className="text-2xl font-black text-blue-600 tracking-tighter flex items-center gap-2">
+          <ZapIcon width={40}/>
           <span className="shrink-0">HR</span>
           {!isCollapsed && (
             <span className="animate-in fade-in duration-500">_RECRUITER</span>

@@ -1,225 +1,270 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
-import { User, Palette, Camera, Loader2, CheckCircle, Moon, Sun, UploadCloud } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { 
+  Camera, Save, Eye, EyeOff, Lock, Bell, Shield, CheckCircle,
+  Building2, Briefcase, Phone, User as UserIcon 
+} from "lucide-react";
+import toast from "react-hot-toast";
+import LoadingSpinner from "@/components/UI/LoadingSpinner";
+import { useUser } from "@/context/userContext";
 
-export default function RecruiterSettings() {
-  const [activeTab, setActiveTab] = useState("account");
-  const [darkMode, setDarkMode] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+const TABS = ["Profile", "Security", "Notifications"] as const;
+type Tab = (typeof TABS)[number];
+
+// Reusable Styles
+const inputCls = "w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white transition-all";
+const labelCls = "block text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5";
+
+const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
+  <div className="space-y-1">
+    <label className={labelCls}>{label} {required && <span className="text-red-500">*</span>}</label>
+    {children}
+  </div>
+);
+
+export default function RecruiterSettingPage() {
+  const { user, userProfile } = useUser(); // userProfile acts as the refresh function
   
-  const [formData, setFormData] = useState({
+  const [activeTab, setActiveTab] = useState<Tab>("Profile");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Form states
+  const [form, setForm] = useState({
     Name: "",
-    imageUrl: "",
-    companyName: "",
+    jobTitle: "",
+    company: "",
+   
+    bio: "",
   });
-  const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState(false);
 
-  // 1. Fetch initial data
+  const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" });
+  const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false });
+  const [notifs, setNotifs] = useState({ newApplication: true, interviewReminder: true, candidateMessage: true });
+
+  // Sync context user data to local form on load
   useEffect(() => {
-    async function fetchProfile() {
-      const res = await fetch("/api/recruiter/setting");
-      if (res.ok) {
+    const fetchRecruiterDetails = async () => {
+      try {
+        const res = await fetch("/api/recruiter/setting");
         const data = await res.json();
-        setFormData({
-          Name: data.Name || "",
-          imageUrl: data.imageUrl || "",
-          companyName: data.companyName || "",
+        
+        setForm({
+          Name: user?.Name || "",
+          jobTitle: data.jobTitle || "",
+          company: data.company || "",
+         
+          bio: data.bio || "",
         });
+      } catch (err) {
+        toast.error("Failed to load recruiter  settings");
+      } finally {
+        setLoading(false);
       }
-    }
-    fetchProfile();
-  }, []);
+    };
 
-  // 2. Handle Image Upload (Preview logic)
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (user) fetchRecruiterDetails();
+  }, [user]);
+
+  // Handle Image Upload
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // In a real app, you'd upload to Cloudinary/S3 here
-      // For now, we create a local preview URL
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, imageUrl: reader.result as string });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+    if (!file) return;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setSaved(false);
-
-    try {
-      const res = await fetch("/api/recruiter/setting", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (res.ok) {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      setUploading(true);
+      try {
+        const res = await fetch("/api/auth/bx/user-profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ avatar: base64 }),
+        });
+        if (!res.ok) throw new Error();
+        
+        await userProfile(); // Refresh Global Context
+        toast.success("Profile photo updated!");
+      } catch (err) {
+        toast.error("Upload failed");
+      } finally {
+        setUploading(false);
       }
-    } catch (error) {
-      console.error(error);
+    };
+  };
+
+  // Handle Full Profile Save
+  const handleSave = async () => {
+    if (!form.Name.trim()) return toast.error("Name is required");
+    setSaving(true);
+    try {
+      await Promise.all([
+        fetch("/api/auth/bx/user-profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: form.Name }),
+        }),
+        fetch("/api/recruiter/setting", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jobTitle: form.jobTitle,
+            company: form.company,
+         
+            bio: form.bio,
+          }),
+        }),
+      ]);
+
+      await userProfile(); // Refresh Global Context to update Name everywhere
+      toast.success("Settings saved");
+    } catch (err) {
+      toast.error("Failed to save changes");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  if (loading) return <div className="h-[60vh] flex items-center justify-center"><LoadingSpinner /></div>;
+
+  const initials = user?.Name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "??";
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? "bg-slate-950 text-white" : "bg-gray-50 text-gray-900"}`}>
-      <div className="max-w-5xl mx-auto p-4 md:p-10">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <p className={darkMode ? "text-slate-400" : "text-gray-500"}>Manage your recruiter profile and UI preferences.</p>
-        </header>
-
-        <div className="flex flex-col md:flex-row gap-8">
-          {/* Sidebar */}
-          <aside className="w-full md:w-64 space-y-2">
-            <button
-              onClick={() => setActiveTab("account")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeTab === "account" 
-                ? (darkMode ? "bg-blue-600 text-white" : "bg-white shadow-sm text-blue-600 border border-gray-200") 
-                : (darkMode ? "text-slate-400 hover:bg-slate-900" : "text-gray-600 hover:bg-gray-100")
-              }`}
-            >
-              <User size={18} /> Account
-            </button>
-            <button
-              onClick={() => setActiveTab("appearance")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                activeTab === "appearance" 
-                ? (darkMode ? "bg-blue-600 text-white" : "bg-white shadow-sm text-blue-600 border border-gray-200") 
-                : (darkMode ? "text-slate-400 hover:bg-slate-900" : "text-gray-600 hover:bg-gray-100")
-              }`}
-            >
-              <Palette size={18} /> Appearance
-            </button>
-          </aside>
-
-          {/* Main Content */}
-          <main className={`flex-1 border rounded-2xl shadow-sm overflow-hidden transition-colors ${darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-gray-200"}`}>
-            <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-8">
-              
-              {activeTab === "account" ? (
-                <section className="space-y-6">
-                  <div>
-                    <h2 className="text-lg font-semibold">Profile Information</h2>
-                    <p className={`text-sm ${darkMode ? "text-slate-400" : "text-gray-500"}`}>Click the avatar to upload a new photo.</p>
-                  </div>
-
-                  <div className={`flex flex-col sm:flex-row items-center gap-6 p-6 rounded-2xl border-2 border-dashed ${darkMode ? "bg-slate-950/50 border-slate-700" : "bg-gray-50 border-gray-200"}`}>
-                    <div 
-                      className="relative group cursor-pointer"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <img
-                        src={formData.imageUrl || "https://ui-avatars.com/api/?name=User"}
-                        alt="Profile"
-                        className="w-24 h-24 rounded-2xl object-cover ring-4 ring-blue-500/20"
-                      />
-                      <div className="absolute inset-0 bg-black/50 rounded-2xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white text-[10px] font-bold">
-                        <Camera size={24} className="mb-1" />
-                        CHANGE
-                      </div>
-                      <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleImageChange} 
-                        className="hidden" 
-                        accept="image/*" 
-                      />
-                    </div>
-                    
-                    <div className="flex-1 w-full space-y-3">
-                      <div className="flex items-center gap-2 text-blue-500 text-sm font-semibold">
-                        <UploadCloud size={16} />
-                        Quick Update
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="Or paste an Image URL here..."
-                        className={`w-full text-sm p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all ${darkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border border-gray-200 text-gray-900"}`}
-                        value={formData.imageUrl}
-                        onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold">Full Name</label>
-                      <input
-                        type="text"
-                        className={`w-full p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all ${darkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border border-gray-200"}`}
-                        value={formData.Name}
-                        onChange={(e) => setFormData({ ...formData, Name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold">Company Name</label>
-                      <input
-                        type="text"
-                        className={`w-full p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all ${darkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border border-gray-200"}`}
-                        value={formData.companyName}
-                        onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </section>
-              ) : (
-                <section className="space-y-6">
-                  <div>
-                    <h2 className="text-lg font-semibold">Appearance</h2>
-                    <p className={`text-sm ${darkMode ? "text-slate-400" : "text-gray-500"}`}>Toggle between light and dark themes.</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div 
-                      onClick={() => setDarkMode(false)}
-                      className={`p-4 rounded-2xl cursor-pointer border-2 transition-all ${!darkMode ? "border-blue-500 bg-blue-50/50" : "border-slate-800 bg-slate-950"}`}
-                    >
-                      <div className="flex items-center gap-3 mb-3 font-bold">
-                        <Sun className="text-orange-500" /> Light
-                      </div>
-                      <div className="h-20 bg-white rounded-lg border border-gray-200 shadow-sm"></div>
-                    </div>
-
-                    <div 
-                      onClick={() => setDarkMode(true)}
-                      className={`p-4 rounded-2xl cursor-pointer border-2 transition-all ${darkMode ? "border-blue-500 bg-blue-900/20" : "border-gray-200 bg-gray-50"}`}
-                    >
-                      <div className="flex items-center gap-3 mb-3 font-bold">
-                        <Moon className="text-blue-400" /> Dark
-                      </div>
-                      <div className="h-20 bg-slate-900 rounded-lg border border-slate-700 shadow-sm"></div>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Save Footer */}
-              <div className={`pt-6 border-t flex items-center justify-between ${darkMode ? "border-slate-800" : "border-gray-100"}`}>
-                <div className="flex items-center gap-2 text-green-500 transition-opacity" style={{ opacity: saved ? 1 : 0 }}>
-                  <CheckCircle size={18} />
-                  <span className="text-sm font-bold">Updated!</span>
-                </div>
-                
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-500/30 disabled:bg-gray-500 transition-all active:scale-95"
-                >
-                  {loading ? <Loader2 size={18} className="animate-spin" /> : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </main>
-        </div>
+    <div className="max-w-4xl mx-auto p-4 space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Account Settings</h1>
+        <p className="text-sm text-gray-500">Manage your recruitment profile and security</p>
       </div>
+
+      {/* Tabs */}
+      <div className="flex p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-6 py-2 text-sm font-bold rounded-lg transition-all cursor-pointer ${
+              activeTab === tab ? "bg-white dark:bg-gray-900 text-indigo-600 dark:text-white shadow-sm" : "text-gray-500"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "Profile" && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          {/* Avatar Card */}
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 flex items-center gap-6">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-2xl font-bold overflow-hidden border-2 border-indigo-50 dark:border-gray-800">
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} className="w-full h-full object-cover" alt="Avatar" />
+                ) : (
+                  initials
+                )}
+                {uploading && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 p-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-md hover:scale-105 transition-all cursor-pointer"
+              >
+                <Camera size={14} className="text-indigo-600" />
+              </button>
+              <input type="file" ref={fileInputRef} onChange={handleImageChange} className="hidden" accept="image/*" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 dark:text-white">{user?.Name}</h3>
+              <p className="text-xs text-gray-500">{user?.role} • {user?.recruiterProfile?.company || "No Company"}</p>
+            </div>
+          </div>
+
+          {/* Form Card */}
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Full Name" required>
+                <input value={form.Name} onChange={e => setForm({...form, Name: e.target.value})} className={inputCls} />
+              </Field>
+              <Field label="Job Title">
+                <input value={form.jobTitle} onChange={e => setForm({...form, jobTitle: e.target.value})} className={inputCls} />
+              </Field>
+              <Field label="Company Name">
+                <input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className={inputCls} />
+              </Field>
+             
+              <div className="md:col-span-2">
+                <Field label="Bio">
+                  <textarea value={form.bio} onChange={e => setForm({...form, bio: e.target.value})} rows={3} className={`${inputCls} resize-none`} />
+                </Field>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button 
+                onClick={handleSave} 
+                disabled={saving}
+                className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                <Save size={18} /> {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "Security" && (
+        <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-100 dark:border-gray-800 space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          <div className="flex items-center gap-3 border-b border-gray-50 dark:border-gray-800 pb-4">
+            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg"><Lock className="text-indigo-600" size={20} /></div>
+            <h2 className="font-bold text-gray-900 dark:text-white">Security & Password</h2>
+          </div>
+          <div className="max-w-md space-y-4">
+            {(["current", "next", "confirm"] as const).map((key) => (
+              <Field key={key} label={key === "current" ? "Current Password" : key === "next" ? "New Password" : "Confirm Password"}>
+                <div className="relative">
+                  <input
+                    type={showPw[key] ? "text" : "password"}
+                    value={pwForm[key]}
+                    onChange={(e) => setPwForm({...pwForm, [key]: e.target.value})}
+                    className={inputCls}
+                    placeholder="••••••••"
+                  />
+                  <button onClick={() => setShowPw({...showPw, [key]: !showPw[key]})} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    {showPw[key] ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </Field>
+            ))}
+            <button className="px-6 py-2.5 bg-gray-900 dark:bg-white dark:text-black text-white rounded-xl font-bold text-sm">
+              Update Password
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "Notifications" && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800 animate-in fade-in slide-in-from-bottom-3 duration-500">
+          {Object.entries(notifs).map(([key, val]) => (
+            <div key={key} className="p-6 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+              <div>
+                <p className="text-sm font-bold text-gray-900 dark:text-white capitalize">{key.replace(/([A-Z])/g, " $1")}</p>
+                <p className="text-xs text-gray-500">Receive email alerts for this activity</p>
+              </div>
+              <button
+                onClick={() => setNotifs({...notifs, [key]: !val})}
+                className={`w-12 h-6 rounded-full transition-all relative ${val ? "bg-indigo-600" : "bg-gray-300 dark:bg-gray-700"}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${val ? "left-7" : "left-1"}`} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

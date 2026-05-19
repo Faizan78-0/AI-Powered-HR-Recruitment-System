@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
-
+export type UserRole = "RECRUITER" | "JOB_SEEKER";
 const JWT_SECRET = process.env.JWT_SECRET;
 
 export const generateTokenAndSetCookie = async (
