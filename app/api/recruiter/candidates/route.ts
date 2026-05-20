@@ -1,4 +1,8 @@
 // app/api/recruiter/candidates/route.ts
+//
+// Queries the Candidate collection directly — each record was created when
+// the seeker applied (see /api/seeker/apply) so all recruiter-facing data
+// is immediately available without cross-collection joins for the list view..
 
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
@@ -20,32 +24,32 @@ async function getAuth() {
 // Shape a Candidate document → UI-ready object
 function toShape(c: any) {
   return {
-    id: c._id.toString(),
-    _id: c._id.toString(),
+    id:            c._id.toString(),
+    _id:           c._id.toString(),
     applicationId: c.applicationId?.toString() ?? c._id.toString(),
-    seekerId: c.seekerId?.toString() ?? null,
+    seekerId:      c.seekerId?.toString()  ?? null,
     // Normalised name (schema stores lowercase string already)
-    name: c.name ?? "Unknown",
-    email: c.email ?? "",
-    phone: c.phone ?? null,
-    avatar: null, // not stored on Candidate — load on demand if needed
-    jobId: c.jobId?.toString() ?? null,
-    jobTitle: c.jobTitle ?? "Unknown Position",
-    company: c.company ?? "",
-    status: c.status ?? "APPLIED",
-    rating: c.rating ?? 3,
-    experience: c.experience ?? null,
-    skills: c.skills ?? [],
-    notes: c.notes ?? null,
-    resumeUrl: c.resumeUrl ?? null,
-    coverLetter: c.coverLetter ?? null,
-    appliedAt: c.appliedAt ? new Date(c.appliedAt).toISOString() : null,
-    appliedDate: c.appliedAt ? new Date(c.appliedAt).toISOString() : null,
+    name:          c.name  ?? "Unknown",
+    email:         c.email ?? "",
+    phone:         c.phone ?? null,
+    avatar:        null,              // not stored on Candidate — load on demand if needed
+    jobId:         c.jobId?.toString() ?? null,
+    jobTitle:      c.jobTitle ?? "Unknown Position",
+    company:       c.company  ?? "",
+    status:        c.status   ?? "APPLIED",
+    rating:        c.rating   ?? 3,
+    experience:    c.experience  ?? null,
+    skills:        c.skills      ?? [],
+    notes:         c.notes       ?? null,
+    resumeUrl:     c.resumeUrl   ?? null,
+    coverLetter:   c.coverLetter ?? null,
+    appliedAt:     c.appliedAt   ? new Date(c.appliedAt).toISOString() : null,
+    appliedDate:   c.appliedAt   ? new Date(c.appliedAt).toISOString() : null,
   };
 }
 
 // ── GET /api/recruiter/candidates ─────────────────────────────────────────────
-
+// ?search= &status= &jobId= &minRating= &page= &limit=
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
@@ -54,23 +58,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const search = searchParams.get("search")?.trim() ?? "";
-    const status = searchParams.get("status");
+    const search    = searchParams.get("search")?.trim()  ?? "";
+    const status    = searchParams.get("status");
     const jobIdParam = searchParams.get("jobId");
     const minRating = Number(searchParams.get("minRating") ?? 0);
-    const page = Math.max(1, Number(searchParams.get("page") ?? 1));
-    const limit = Math.min(
-      100,
-      Math.max(1, Number(searchParams.get("limit") ?? 20))
-    );
-    const skip = (page - 1) * limit;
+    const page      = Math.max(1, Number(searchParams.get("page")  ?? 1));
+    const limit     = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? 20)));
+    const skip      = (page - 1) * limit;
 
     const recruiterId = new mongoose.Types.ObjectId(auth.userId);
 
+    // ── Build filter ──────────────────────────────────────────────────────
+    // recruiterId is indexed on Candidate — this is a single-collection query
     const filter: any = { recruiterId };
 
-    if (status) filter.status = status;
-    if (minRating > 0) filter.rating = { $gte: minRating };
+    if (status)         filter.status = status;
+    if (minRating > 0)  filter.rating = { $gte: minRating };
     if (jobIdParam) {
       if (!mongoose.Types.ObjectId.isValid(jobIdParam))
         return NextResponse.json({ error: "Invalid jobId" }, { status: 400 });
@@ -101,15 +104,8 @@ export async function GET(req: NextRequest) {
       (pipelineAgg as any[]).map((p) => [p._id, p.count])
     );
     const STAGES = [
-      "APPLIED",
-      "SCREENING",
-      "REVIEWING",
-      "INTERVIEW_SCHEDULED",
-      "OFFER",
-      "HIRED",
-      "ACCEPTED",
-      "REJECTED",
-      "WITHDRAWN",
+      "APPLIED","SCREENING","REVIEWING","INTERVIEW_SCHEDULED",
+      "OFFER","HIRED","ACCEPTED","REJECTED","WITHDRAWN",
     ];
     const pipeline = STAGES.map((stage) => ({
       stage,
@@ -120,34 +116,27 @@ export async function GET(req: NextRequest) {
     // Return the distinct jobs this recruiter has candidates for
     const jobIds = await Candidate.distinct("jobId", { recruiterId });
     const jobs = jobIds.length
-      ? await Job.find({ _id: { $in: jobIds } })
-          .select("title")
-          .lean()
+      ? await Job.find({ _id: { $in: jobIds } }).select("title").lean()
       : [];
 
     return NextResponse.json({
-      data: candidates.map(toShape),
+      data:     candidates.map(toShape),
       total,
       page,
       limit,
-      pages: Math.ceil(total / limit),
+      pages:    Math.ceil(total / limit),
       pipeline,
-      jobs: (jobs as any[]).map((j) => ({
-        _id: j._id.toString(),
-        title: j.title,
-      })),
+      jobs:     (jobs as any[]).map((j) => ({ _id: j._id.toString(), title: j.title })),
     });
   } catch (error) {
     console.error("[GET /api/recruiter/candidates]", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
 // ── PATCH /api/recruiter/candidates?id=<candidateId> ─────────────────────────
-
+// Updates both Candidate and the linked Application to keep them in sync.
+// Body: { status?, rating?, notes? }
 export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
@@ -160,40 +149,29 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Valid id required" }, { status: 400 });
 
     // Ownership — recruiterId is stored on the Candidate document
-    const candidate = (await Candidate.findById(id).lean()) as any;
+    const candidate = await Candidate.findById(id).lean() as any;
     if (!candidate)
-      return NextResponse.json(
-        { error: "Candidate not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     if (candidate.recruiterId?.toString() !== auth.userId)
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
-    const body = await req.json();
+    const body   = await req.json();
     const update: any = {};
     if (body.status !== undefined) update.status = body.status;
-    if (body.notes !== undefined) update.notes = body.notes?.trim() ?? null;
-    if (body.rating !== undefined)
-      update.rating = Math.min(5, Math.max(1, Number(body.rating)));
+    if (body.notes  !== undefined) update.notes  = body.notes?.trim() ?? null;
+    if (body.rating !== undefined) update.rating = Math.min(5, Math.max(1, Number(body.rating)));
 
     if (!Object.keys(update).length)
-      return NextResponse.json(
-        { error: "No valid fields to update" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
 
     // Update Candidate and mirror status/notes on the Application in parallel
     const [updated] = await Promise.all([
-      Candidate.findByIdAndUpdate(
-        id,
-        { $set: update },
-        { new: true, runValidators: true }
-      ).lean(),
+      Candidate.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true }).lean(),
       candidate.applicationId
         ? Application.findByIdAndUpdate(candidate.applicationId, {
             $set: {
               ...(update.status !== undefined && { status: update.status }),
-              ...(update.notes !== undefined && { notes: update.notes }),
+              ...(update.notes  !== undefined && { notes:  update.notes  }),
             },
           })
         : Promise.resolve(null),
@@ -202,10 +180,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(toShape(updated));
   } catch (error) {
     console.error("[PATCH /api/recruiter/candidates]", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -221,12 +196,9 @@ export async function DELETE(req: NextRequest) {
     if (!id || !mongoose.Types.ObjectId.isValid(id))
       return NextResponse.json({ error: "Valid id required" }, { status: 400 });
 
-    const candidate = (await Candidate.findById(id).lean()) as any;
+    const candidate = await Candidate.findById(id).lean() as any;
     if (!candidate)
-      return NextResponse.json(
-        { error: "Candidate not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     if (candidate.recruiterId?.toString() !== auth.userId)
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
@@ -241,9 +213,6 @@ export async function DELETE(req: NextRequest) {
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error("[DELETE /api/recruiter/candidates]", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

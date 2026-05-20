@@ -10,7 +10,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type InterviewStatus = "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
-export type InterviewType   =
+export type InterviewType =
   | "PHONE_SCREEN" | "VIDEO_CALL" | "TECHNICAL"
   | "HR_INTERVIEW" | "FINAL_INTERVIEW" | "PANEL";
 
@@ -19,8 +19,8 @@ export interface Interview {
   company:       string;
   role:          string;
   recruiterName: string;
-  date:          string;        // "YYYY-MM-DD"
-  time:          string;        // "HH:mm"
+  date:          string;       // "YYYY-MM-DD"
+  time:          string;       // "HH:mm"
   type:          InterviewType;
   status:        InterviewStatus;
   meetingLink?:  string | null;
@@ -44,15 +44,15 @@ const TYPE_CONFIG: Record<
 
 const STATUS_CONFIG: Record<
   InterviewStatus,
-  { label: string; color: string; bg: string; dot: string; icon: React.ElementType }
+  { label: string; color: string; bg: string; dot: string }
 > = {
-  SCHEDULED: { label: "Scheduled", color: "text-blue-700 dark:text-blue-300",      bg: "bg-blue-50 dark:bg-blue-900/30",      dot: "bg-blue-500",    icon: Clock        },
-  COMPLETED: { label: "Completed", color: "text-emerald-700 dark:text-emerald-300",bg: "bg-emerald-50 dark:bg-emerald-900/30",dot: "bg-emerald-500", icon: CheckCircle  },
-  CANCELLED: { label: "Cancelled", color: "text-red-700 dark:text-red-300",        bg: "bg-red-50 dark:bg-red-900/30",        dot: "bg-red-500",     icon: XCircle      },
-  NO_SHOW:   { label: "No Show",   color: "text-orange-700 dark:text-orange-300",  bg: "bg-orange-50 dark:bg-orange-900/30",  dot: "bg-orange-500",  icon: XCircle      },
+  SCHEDULED: { label: "Scheduled", color: "text-blue-700 dark:text-blue-300",    bg: "bg-blue-50 dark:bg-blue-900/30",      dot: "bg-blue-500"    },
+  COMPLETED: { label: "Completed", color: "text-emerald-700 dark:text-emerald-300", bg: "bg-emerald-50 dark:bg-emerald-900/30", dot: "bg-emerald-500" },
+  CANCELLED: { label: "Cancelled", color: "text-red-700 dark:text-red-300",      bg: "bg-red-50 dark:bg-red-900/30",        dot: "bg-red-500"     },
+  NO_SHOW:   { label: "No Show",   color: "text-orange-700 dark:text-orange-300",bg: "bg-orange-50 dark:bg-orange-900/30",  dot: "bg-orange-500"  },
 };
 
-// ─── Date helpers (timezone-safe) ────────────────────────────────────────────
+// ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function parseLocalDate(dateStr: string): Date | null {
   if (!dateStr) return null;
@@ -64,13 +64,11 @@ function parseLocalDate(dateStr: string): Date | null {
 function getDaysUntil(dateStr: string): string | null {
   const target = parseLocalDate(dateStr);
   if (!target) return null;
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   target.setHours(0, 0, 0, 0);
-
   const diff = Math.ceil((target.getTime() - today.getTime()) / 86_400_000);
-  if (diff < 0)  return null;
+  if (diff < 0)   return null;
   if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
   return `In ${diff} days`;
@@ -100,7 +98,7 @@ export default function JobSeekerInterviewsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/jobseeker/interviews");
+      const res = await fetch("/api/jobseeker/interview");
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? `Server error ${res.status}`);
@@ -124,7 +122,7 @@ export default function JobSeekerInterviewsPage() {
   const upcoming = filtered.filter((iv) => iv.status === "SCHEDULED");
   const past     = filtered.filter((iv) => iv.status !== "SCHEDULED");
 
-  // ── Loading state ─────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -136,7 +134,7 @@ export default function JobSeekerInterviewsPage() {
     );
   }
 
-  // ── Error state ───────────────────────────────────────────────────────────
+  // ── Error ─────────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div className="space-y-6">
@@ -158,7 +156,6 @@ export default function JobSeekerInterviewsPage() {
   // ── Main view ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
-
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <PageHeader />
@@ -174,9 +171,9 @@ export default function JobSeekerInterviewsPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Upcoming",  value: interviews.filter((i) => i.status === "SCHEDULED").length, color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-900/20" },
+          { label: "Upcoming",  value: interviews.filter((i) => i.status === "SCHEDULED").length, color: "text-blue-600",    bg: "bg-blue-50 dark:bg-blue-900/20"    },
           { label: "Completed", value: interviews.filter((i) => i.status === "COMPLETED").length, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-          { label: "Cancelled", value: interviews.filter((i) => i.status === "CANCELLED").length, color: "text-red-600",     bg: "bg-red-50 dark:bg-red-900/20" },
+          { label: "Cancelled", value: interviews.filter((i) => i.status === "CANCELLED").length, color: "text-red-600",     bg: "bg-red-50 dark:bg-red-900/20"      },
           { label: "Total",     value: interviews.length,                                          color: "text-indigo-600",  bg: "bg-indigo-50 dark:bg-indigo-900/20" },
         ].map((s) => (
           <div key={s.label} className={`${s.bg} rounded-2xl p-4`}>
@@ -211,7 +208,7 @@ export default function JobSeekerInterviewsPage() {
           </h2>
           <div className="space-y-4">
             {upcoming.map((iv) => {
-              const tc        = TYPE_CONFIG[iv.type]    ?? TYPE_CONFIG.VIDEO_CALL;
+              const tc        = TYPE_CONFIG[iv.type]     ?? TYPE_CONFIG.VIDEO_CALL;
               const sc        = STATUS_CONFIG[iv.status] ?? STATUS_CONFIG.SCHEDULED;
               const Icon      = tc.icon;
               const daysUntil = getDaysUntil(iv.date);
@@ -230,7 +227,7 @@ export default function JobSeekerInterviewsPage() {
                         <Icon size={22} className={tc.color} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        {/* Company + status + days-until badges */}
+                        {/* Badges */}
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <span className="font-bold text-gray-900 dark:text-white text-lg">
                             {iv.company}
@@ -294,7 +291,7 @@ export default function JobSeekerInterviewsPage() {
           </h2>
           <div className="space-y-3">
             {past.map((iv) => {
-              const tc   = TYPE_CONFIG[iv.type]    ?? TYPE_CONFIG.VIDEO_CALL;
+              const tc   = TYPE_CONFIG[iv.type]     ?? TYPE_CONFIG.VIDEO_CALL;
               const sc   = STATUS_CONFIG[iv.status] ?? STATUS_CONFIG.COMPLETED;
               const Icon = tc.icon;
               return (
@@ -340,9 +337,7 @@ export default function JobSeekerInterviewsPage() {
         <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
           <Calendar size={40} className="mx-auto text-gray-300 dark:text-gray-700 mb-3" />
           <p className="text-gray-500 dark:text-gray-400 font-medium">
-            {statusFilter === "ALL"
-              ? "No interviews yet"
-              : `No ${statusFilter.toLowerCase()} interviews`}
+            {statusFilter === "ALL" ? "No interviews yet" : `No ${STATUS_CONFIG[statusFilter as InterviewStatus]?.label.toLowerCase() ?? statusFilter.toLowerCase()} interviews`}
           </p>
           <p className="text-sm text-gray-400 dark:text-gray-600 mt-1">
             {statusFilter === "ALL"
@@ -354,8 +349,6 @@ export default function JobSeekerInterviewsPage() {
     </div>
   );
 }
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function PageHeader() {
   return (

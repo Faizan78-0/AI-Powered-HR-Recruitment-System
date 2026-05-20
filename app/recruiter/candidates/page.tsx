@@ -143,7 +143,7 @@ export default function RecruiterCandidatesPage() {
     setScheduling(true);
     setScheduleError(null);
     try {
-      const res = await fetch("/api/recruiter/interview", {   // ← plural, correct path
+      const res = await fetch("/api/recruiter/interviews", {   // ← plural, correct path
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

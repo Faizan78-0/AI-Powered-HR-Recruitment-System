@@ -11,16 +11,15 @@ export type InterviewType =
   | "PANEL";
 
 export interface IInterview extends Document {
-  _id: mongoose.Types.ObjectId;
-  applicationId: mongoose.Types.ObjectId;
-  candidateId:   mongoose.Types.ObjectId;   // User._id of the seeker
-  jobId:         mongoose.Types.ObjectId | null;
-  seekerId:      mongoose.Types.ObjectId | null; // alias for candidateId
+  _id:           mongoose.Types.ObjectId;
+  applicationId: mongoose.Types.ObjectId;   // ref → Application
+  candidateId:   mongoose.Types.ObjectId;   // ref → User (seeker's User._id) — REQUIRED
+  jobId:         mongoose.Types.ObjectId | null; // ref → Job (denormalised for fast lookup)
   company:       string;
   role:          string;
   recruiterName: string | null;
-  date:          string;   // "YYYY-MM-DD"
-  time:          string;   // "HH:mm"
+  date:          string;        // "YYYY-MM-DD"
+  time:          string;        // "HH:mm"
   type:          InterviewType;
   status:        InterviewStatus;
   meetingLink:   string | null;
@@ -32,52 +31,52 @@ export interface IInterview extends Document {
 
 const InterviewSchema = new Schema<IInterview>(
   {
-    applicationId: { type: Schema.Types.ObjectId, ref: "Application", required: true, index: true },
-    candidateId:   { type: Schema.Types.ObjectId, ref: "User",        required: true, index: true },
-    jobId:         { type: Schema.Types.ObjectId, ref: "Job",         default: null },
-    seekerId:      { type: Schema.Types.ObjectId, ref: "User",        default: null,  index: true },
+    applicationId: {
+      type:     Schema.Types.ObjectId,
+      ref:      "Application",
+      required: true,
+      index:    true,
+    },
+    // ✅ This MUST be the seeker's User._id (same value stored in
+    //    Application.seekerId and returned by verifyToken as userId).
+    //    Recruiters must populate this field when creating an interview.
+    candidateId: {
+      type:     Schema.Types.ObjectId,
+      ref:      "User",
+      required: true,
+      index:    true,
+    },
+    jobId: {
+      type:    Schema.Types.ObjectId,
+      ref:     "Job",
+      default: null,
+    },
     company:       { type: String, required: true, trim: true },
     role:          { type: String, required: true, trim: true },
     recruiterName: { type: String, default: null,  trim: true },
-    date:          { type: String, required: true },
-    time:          { type: String, required: true },
+    date:          { type: String, required: true  },   // "YYYY-MM-DD"
+    time:          { type: String, required: true  },   // "HH:mm"
     type: {
-      type: String,
-      enum: ["PHONE_SCREEN", "VIDEO_CALL", "TECHNICAL", "HR_INTERVIEW", "FINAL_INTERVIEW", "PANEL"],
+      type:     String,
+      enum:     ["PHONE_SCREEN", "VIDEO_CALL", "TECHNICAL", "HR_INTERVIEW", "FINAL_INTERVIEW", "PANEL"],
       required: true,
     },
     status: {
-      type: String,
-      enum: ["SCHEDULED", "COMPLETED", "CANCELLED", "NO_SHOW"],
+      type:    String,
+      enum:    ["SCHEDULED", "COMPLETED", "CANCELLED", "NO_SHOW"],
       default: "SCHEDULED",
     },
-    meetingLink:  { type: String, default: null, trim: true },
-    interviewers: { type: [String], default: [] },
-    notes:        { type: String, default: null, trim: true },
+    meetingLink:  { type: String,   default: null, trim: true },
+    interviewers: { type: [String], default: []   },
+    notes:        { type: String,   default: null, trim: true },
   },
-  {
-    timestamps: true,
-    toJSON: {
-      virtuals: true,
-      // transform(_doc, ret) {
-      //   ret.id = ret._id.toString();
-      //   if (ret.applicationId) ret.applicationId = ret.applicationId.toString();
-      //   if (ret.candidateId)   ret.candidateId   = ret.candidateId.toString();
-      //   if (ret.jobId)         ret.jobId         = ret.jobId.toString();
-      //   if (ret.seekerId)      ret.seekerId       = ret.seekerId.toString();
-      //   delete ret._id;
-      //   delete ret.__v;
-      // },
-    },
-  }
+  { timestamps: true }
 );
 
-InterviewSchema.index({ status: 1 });
-InterviewSchema.index({ date: 1, time: 1 });
-InterviewSchema.index({ applicationId: 1, status: 1, date: 1 });
 InterviewSchema.index({ candidateId:   1, status: 1, date: 1 });
+InterviewSchema.index({ applicationId: 1, status: 1, date: 1 });
+InterviewSchema.index({ date: 1, time: 1 });
 
-// ✅ Never delete mongoose.models.Interview — that causes hot-reload failures
 const Interview: Model<IInterview> =
   mongoose.models.Interview ??
   mongoose.model<IInterview>("Interview", InterviewSchema);
