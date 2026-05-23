@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser } from "@/context/userContext";
+import userProfile from "@/lib/userProfile";
 
 export const AppBadge = ({ status }: { status: ApplicationStatus }) => {
   const c = APP_CFG[status];
@@ -237,7 +238,7 @@ export function RShell({
   const path = usePathname();
   const { user } = useUser();
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-white text-black dark:bg-gray-900 dark:text-white transition-colors duration-200">
       <aside className="fixed left-0 top-0 h-full w-60 bg-indigo-950 flex flex-col z-30">
         <div className="px-4 py-5 border-b border-indigo-900">
           <div className="flex items-center gap-3">
@@ -270,7 +271,7 @@ export function RShell({
                   {user.Name}
                 </p>
                 <p className="text-indigo-400 text-xs truncate">
-                  {user.recruiterProfile?.company || "Recruiter"}
+                  {user.role}
                 </p>
               </div>
             </div>

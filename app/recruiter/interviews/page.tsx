@@ -15,6 +15,7 @@ import {
   AlertCircle,
   ChevronDown,
 } from "lucide-react";
+import LoadingSpinner from "@/components/UI/LoadingSpinner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -360,7 +361,7 @@ export default function RecruiterInterviewsPage() {
       {/* Loading / Error */}
       {loading && (
         <div className="flex items-center justify-center py-20">
-          <Loader2 size={30} className="animate-spin text-gray-400" />
+          <LoadingSpinner />
         </div>
       )}
       {!loading && fetchError && (

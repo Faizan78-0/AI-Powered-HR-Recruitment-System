@@ -1,12 +1,13 @@
 "use client";
 import React, { createContext, useContext, useState, useCallback } from "react";
+import { User } from "@/types/index";
 
-interface User {
-  recruiterProfile: any;
-  Name: string;
-  role: string;
-  imageUrl?: string;
-}
+// interface User {
+//   recruiterProfile: any;
+//   Name: string;
+//   role: string;
+//   imageUrl?: string;
+// }
 
 interface UserContextType {
   user: User | null;

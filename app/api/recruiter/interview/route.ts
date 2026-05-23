@@ -7,11 +7,20 @@ import { verifyToken } from "@/Utils/verifytoken";
 import User from "@/modal/user.modal";
 import Job from "@/modal/job.modal";
 import Application from "@/modal/application.modal";
-import Interview from "@/modal/interview.modal"; // Double-check path match
+import Interview from "@/modal/interview.modal";
 import {
   notifyInterviewScheduled,
   notifyInterviewUpdated,
 } from "@/services/notification.service";
+
+// Exact enum values as defined in the Interview schema
+type InterviewSchemaType =
+  | "PHONE_SCREEN"
+  | "VIDEO_CALL"
+  | "TECHNICAL"
+  | "HR_INTERVIEW"
+  | "FINAL_INTERVIEW"
+  | "PANEL";
 
 async function getAuth() {
   const cookieStore = await cookies();
@@ -55,16 +64,25 @@ async function verifyOwnership(interviewId: string, userId: string) {
   return { interview, error: null, status: 200 };
 }
 
-// Helper to normalize frontend input to match the schema's enum definitions
-function mapTypeToSchemaEnum(incomingType: string): string {
+// Return type is now the exact schema enum union — eliminates the TS error
+function mapTypeToSchemaEnum(incomingType: string): InterviewSchemaType {
   switch (incomingType) {
     case "VIDEO":
+    case "VIDEO_CALL":
       return "VIDEO_CALL";
     case "PHONE":
+    case "PHONE_SCREEN":
       return "PHONE_SCREEN";
     case "IN_PERSON":
+    case "TECHNICAL":
+      return "TECHNICAL";
+    case "PANEL":
+      return "PANEL";
+    case "FINAL_INTERVIEW":
+      return "FINAL_INTERVIEW";
+    case "HR_INTERVIEW":
     default:
-      return "HR_INTERVIEW"; // Fallback to schema-compatible string
+      return "HR_INTERVIEW";
   }
 }
 
@@ -190,9 +208,15 @@ export async function POST(req: NextRequest) {
         { error: "scheduledAt must be in the future" },
         { status: 400 }
       );
-    if (!["VIDEO", "PHONE", "IN_PERSON"].includes(type))
+
+    const validIncomingTypes = [
+      "VIDEO", "PHONE", "IN_PERSON",
+      "VIDEO_CALL", "PHONE_SCREEN", "TECHNICAL",
+      "HR_INTERVIEW", "FINAL_INTERVIEW", "PANEL",
+    ];
+    if (!validIncomingTypes.includes(type))
       return NextResponse.json(
-        { error: "type must be VIDEO | PHONE | IN_PERSON" },
+        { error: "Invalid interview type provided" },
         { status: 400 }
       );
 
@@ -212,42 +236,37 @@ export async function POST(req: NextRequest) {
     if (app.jobId?.recruiterId?.toString() !== auth.userId)
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
-    // Derive date (YYYY-MM-DD) and time (HH:mm) strings required by schema
     const dateString = parsedDate.toISOString().split("T")[0];
     const timeString = parsedDate.toTimeString().split(" ")[0].slice(0, 5);
 
-    // Build entity satisfying exact Schema requirements
     const interview = await Interview.create({
       applicationId: new mongoose.Types.ObjectId(applicationId),
-      candidateId: new mongoose.Types.ObjectId(app.seekerId),
-      seekerId: new mongoose.Types.ObjectId(app.seekerId),
-      jobId: app.jobId?._id ? new mongoose.Types.ObjectId(app.jobId._id) : null,
-      company: app.jobId?.company ?? "Unknown Company",
-      role: app.jobId?.title ?? "Position",
-      date: dateString,
-      time: timeString,
-      // type: mapTypeToSchemaEnum(type),
-      notes: notes?.trim() ?? null,
-      meetingLink: meetingLink?.trim() ?? null,
-      status: "SCHEDULED",
+      candidateId:   new mongoose.Types.ObjectId(app.seekerId),
+      jobId:         app.jobId?._id ? new mongoose.Types.ObjectId(app.jobId._id) : null,
+      company:       app.jobId?.company ?? "Unknown Company",
+      role:          app.jobId?.title ?? "Position",
+      date:          dateString,
+      time:          timeString,
+      type:          mapTypeToSchemaEnum(type), // now typed as InterviewSchemaType
+      notes:         notes?.trim() ?? null,
+      meetingLink:   meetingLink?.trim() ?? null,
+      status:        "SCHEDULED",
     });
 
-    // Update application status
     await Application.findByIdAndUpdate(applicationId, {
       $set: { status: "INTERVIEW_SCHEDULED" },
     });
 
-    // Notify seeker (fire-and-forget)
     notifyInterviewScheduled({
-      seekerId: app.seekerId.toString(),
-      recruiterId: auth.userId,
-      jobTitle: app.jobId?.title ?? "the position",
-      company: app.jobId?.company ?? "",
-      scheduledAt: parsedDate,
+      seekerId:      app.seekerId.toString(),
+      recruiterId:   auth.userId,
+      jobTitle:      app.jobId?.title ?? "the position",
+      company:       app.jobId?.company ?? "",
+      scheduledAt:   parsedDate,
       interviewType: type,
-      interviewId: interview._id.toString(),
+      interviewId:   interview._id.toString(),
       applicationId,
-      meetingLink: meetingLink ?? undefined,
+      meetingLink:   meetingLink ?? undefined,
     });
 
     const populated = (await Interview.findById(interview._id)
@@ -263,21 +282,21 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        id: populated._id.toString(),
+        id:            populated._id.toString(),
         applicationId: populated.applicationId?._id?.toString() ?? null,
-        candidate: populated.applicationId?.seekerId?.Name ?? "Unknown",
-        email: populated.applicationId?.seekerId?.email ?? "",
-        avatar: populated.applicationId?.seekerId?.imageUrl ?? null,
-        jobTitle: populated.applicationId?.jobId?.title ?? "Position",
-        company: populated.company,
-        location: populated.applicationId?.jobId?.location ?? "",
-        scheduledAt: parsedDate.toISOString(),
-        date: populated.date,
-        time: populated.time,
-        type: populated.type,
-        status: populated.status,
-        meetingLink: populated.meetingLink ?? null,
-        notes: populated.notes ?? null,
+        candidate:     populated.applicationId?.seekerId?.Name ?? "Unknown",
+        email:         populated.applicationId?.seekerId?.email ?? "",
+        avatar:        populated.applicationId?.seekerId?.imageUrl ?? null,
+        jobTitle:      populated.applicationId?.jobId?.title ?? "Position",
+        company:       populated.company,
+        location:      populated.applicationId?.jobId?.location ?? "",
+        scheduledAt:   parsedDate.toISOString(),
+        date:          populated.date,
+        time:          populated.time,
+        type:          populated.type,
+        status:        populated.status,
+        meetingLink:   populated.meetingLink ?? null,
+        notes:         populated.notes ?? null,
       },
       { status: 201 }
     );
@@ -319,11 +338,10 @@ export async function PATCH(req: NextRequest) {
       update.time = d.toTimeString().split(" ")[0].slice(0, 5);
     }
 
-    if (body.type !== undefined) update.type = mapTypeToSchemaEnum(body.type);
-    if (body.notes !== undefined) update.notes = body.notes?.trim() ?? null;
-    if (body.meetingLink !== undefined)
-      update.meetingLink = body.meetingLink?.trim() ?? null;
-    if (body.status !== undefined) update.status = body.status;
+    if (body.type      !== undefined) update.type        = mapTypeToSchemaEnum(body.type);
+    if (body.notes     !== undefined) update.notes       = body.notes?.trim() ?? null;
+    if (body.meetingLink !== undefined) update.meetingLink = body.meetingLink?.trim() ?? null;
+    if (body.status    !== undefined) update.status      = body.status;
 
     if (!Object.keys(update).length)
       return NextResponse.json({ error: "No valid fields" }, { status: 400 });
@@ -345,31 +363,31 @@ export async function PATCH(req: NextRequest) {
 
     if (body.status === "CANCELLED" || body.scheduledAt) {
       notifyInterviewUpdated({
-        seekerId: updated.candidateId?.toString() ?? "",
+        seekerId:    updated.candidateId?.toString() ?? "",
         recruiterId: auth.userId,
-        jobTitle: updated.role,
-        status: body.status ?? "RESCHEDULED",
+        jobTitle:    updated.role,
+        status:      body.status ?? "RESCHEDULED",
         interviewId: id,
       });
     }
 
     const d = new Date(`${updated.date}T${updated.time}`);
     return NextResponse.json({
-      id: updated._id.toString(),
+      id:            updated._id.toString(),
       applicationId: updated.applicationId?._id?.toString() ?? null,
-      candidate: updated.applicationId?.seekerId?.Name ?? "Unknown",
-      email: updated.applicationId?.seekerId?.email ?? "",
-      avatar: updated.applicationId?.seekerId?.imageUrl ?? null,
-      jobTitle: updated.role,
-      company: updated.company,
-      location: updated.applicationId?.jobId?.location ?? "",
-      scheduledAt: isNaN(d.getTime()) ? null : d.toISOString(),
-      date: updated.date,
-      time: updated.time,
-      type: updated.type,
-      status: updated.status,
-      meetingLink: updated.meetingLink ?? null,
-      notes: updated.notes ?? null,
+      candidate:     updated.applicationId?.seekerId?.Name ?? "Unknown",
+      email:         updated.applicationId?.seekerId?.email ?? "",
+      avatar:        updated.applicationId?.seekerId?.imageUrl ?? null,
+      jobTitle:      updated.role,
+      company:       updated.company,
+      location:      updated.applicationId?.jobId?.location ?? "",
+      scheduledAt:   isNaN(d.getTime()) ? null : d.toISOString(),
+      date:          updated.date,
+      time:          updated.time,
+      type:          updated.type,
+      status:        updated.status,
+      meetingLink:   updated.meetingLink ?? null,
+      notes:         updated.notes ?? null,
     });
   } catch (error) {
     console.error("[PATCH /api/recruiter/interviews]", error);
@@ -395,10 +413,10 @@ export async function DELETE(req: NextRequest) {
     await Interview.findByIdAndDelete(id);
 
     notifyInterviewUpdated({
-      seekerId: interview.candidateId?.toString() ?? "",
+      seekerId:    interview.candidateId?.toString() ?? "",
       recruiterId: auth.userId,
-      jobTitle: interview.role,
-      status: "CANCELLED",
+      jobTitle:    interview.role,
+      status:      "CANCELLED",
       interviewId: id,
     });
 

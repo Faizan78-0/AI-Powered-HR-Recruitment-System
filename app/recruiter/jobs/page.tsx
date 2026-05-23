@@ -12,7 +12,7 @@ type JobType   = "FULL_TIME" | "PART_TIME" | "CONTRACT" | "FREELANCE";
 
 interface Job {
   id: string;
-  _id?: string; // MongoDB uses _id
+  _id?: string;
   title: string;
   company: string;
   department: string;
@@ -74,8 +74,11 @@ const STATUS_CFG: Record<JobStatus, { label: string; bg: string; text: string; d
   FILLED: { label: "Filled", bg: "bg-blue-50 dark:bg-blue-900/30",       text: "text-blue-700 dark:text-blue-300",       dot: "bg-blue-500" },
 };
 
-// ─── Helper: resolve job ID (handles both MongoDB _id and plain id) ───────────
-const resolveId = (job: Job): string => job._id ?? job.id;
+// FIX: Fallback config for unknown/undefined status values
+const STATUS_FALLBACK = { label: "Unknown", bg: "bg-gray-100 dark:bg-gray-800", text: "text-gray-500 dark:text-gray-400", dot: "bg-gray-400" };
+
+// ─── Helper: resolve job ID ───────────────────────────────────────────────────
+const resolveId = (job: Job): string => job.id ?? job._id ?? "";
 
 // ─── Shared input style ───────────────────────────────────────────────────────
 const CLS = "w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white placeholder-gray-400 transition-all";
@@ -109,6 +112,7 @@ export default function RecruiterJobsPage() {
   const [benefitInput, setBenefitInput] = useState("");
   const [saving, setSaving]             = useState(false);
   const [deleteId, setDeleteId]         = useState<string | null>(null);
+  const [deleting, setDeleting]         = useState(false);
   const [toast, setToast]               = useState<{ msg: string; ok: boolean } | null>(null);
   const [errors, setErrors]             = useState<Partial<Record<keyof FormState, string>>>({});
   const [totalJobs, setTotalJobs]       = useState(0);
@@ -231,10 +235,13 @@ export default function RecruiterJobsPage() {
         throw new Error(err.error ?? `HTTP Error ${res.status}`);
       }
 
+      // FIX: API now returns the full saved job — use it to update local state
       const saved: Job = await res.json();
 
       if (isEdit) {
-        setJobs(prev => prev.map(j => resolveId(j) === jobId ? saved : j));
+        // Preserve the id on the saved object in case the API omits it
+        const mergedSaved = { ...saved, id: saved.id ?? jobId! };
+        setJobs(prev => prev.map(j => resolveId(j) === jobId ? mergedSaved : j));
       } else {
         setJobs(prev => [saved, ...prev]);
         setTotalJobs(t => t + 1);
@@ -251,15 +258,18 @@ export default function RecruiterJobsPage() {
 
   // ── Delete job ────────────────────────────────────────────────────────────
   const handleDelete = async (id: string) => {
+    setDeleting(true);
     try {
       const res = await fetch(`/api/recruiter/jobs?id=${id}`, { method: "DELETE" });
       if (!res.ok && res.status !== 204) throw new Error();
       setJobs(prev => prev.filter(j => resolveId(j) !== id));
-      setTotalJobs(t => t - 1);
+      setTotalJobs(t => Math.max(0, t - 1));
       setDeleteId(null);
       showToast("Job deleted.");
     } catch {
       showToast("Failed to delete job.", false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -267,6 +277,8 @@ export default function RecruiterJobsPage() {
   const toggleStatus = async (job: Job) => {
     const next: JobStatus = job.status === "OPEN" ? "PAUSED" : "OPEN";
     const jobId = resolveId(job);
+    // Optimistic update
+    setJobs(prev => prev.map(j => resolveId(j) === jobId ? { ...j, status: next } : j));
     try {
       const res = await fetch(`/api/recruiter/jobs?id=${jobId}`, {
         method:  "PATCH",
@@ -274,14 +286,16 @@ export default function RecruiterJobsPage() {
         body:    JSON.stringify({ status: next }),
       });
       if (!res.ok) throw new Error();
+      // FIX: Sync with actual server response
       const updated: Job = await res.json();
-      setJobs(prev => prev.map(j => resolveId(j) === jobId ? updated : j));
+      const mergedUpdated = { ...updated, id: updated.id ?? jobId };
+      setJobs(prev => prev.map(j => resolveId(j) === jobId ? mergedUpdated : j));
     } catch {
+      // Revert optimistic update on failure
+      setJobs(prev => prev.map(j => resolveId(j) === jobId ? { ...j, status: job.status } : j));
       showToast("Failed to update status.", false);
     }
   };
-
-  const displayed = jobs;
 
   return (
     <div className="space-y-6">
@@ -357,7 +371,7 @@ export default function RecruiterJobsPage() {
             <div key={i} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 animate-pulse h-56" />
           ))}
         </div>
-      ) : displayed.length === 0 ? (
+      ) : jobs.length === 0 ? (
         <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
           <Briefcase size={44} className="mx-auto text-gray-300 dark:text-gray-700 mb-3" />
           <p className="font-semibold text-gray-600 dark:text-gray-400">No jobs found</p>
@@ -368,12 +382,12 @@ export default function RecruiterJobsPage() {
         </div>
       ) : (
         <div className="grid sm:grid-cols-1 xl:grid-cols-1 gap-5">
-          {/* FIX: Included index tracking parameter (idx) inside mapped dataset execution context */}
-          {displayed.map((job, idx) => {
-            const sc    = STATUS_CFG[job.status];
+          {jobs.map((job, idx) => {
+            // FIX: Guard against undefined status — fall back gracefully
+            const sc = STATUS_CFG[job.status] ?? STATUS_FALLBACK;
             const idValue = resolveId(job);
             const trackingKey = idValue || `job-fallback-${idx}`;
-            
+
             return (
               <div key={trackingKey} className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800 transition-all flex flex-col">
                 <div className="p-5 flex-1">
@@ -397,7 +411,7 @@ export default function RecruiterJobsPage() {
                       <Users size={12} /> Posted {new Date(job.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </span>
                   </div>
-                  {job.requiredSkills.length > 0 && (
+                  {job.requiredSkills?.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {job.requiredSkills.slice(0, 4).map(s => (
                         <span key={s} className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs rounded-lg font-medium">{s}</span>
@@ -421,6 +435,7 @@ export default function RecruiterJobsPage() {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer">
                     <Pencil size={13} /> Edit
                   </button>
+                  {/* FIX: Pass idValue (already resolved) to setDeleteId */}
                   <button onClick={() => setDeleteId(idValue)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 transition-colors cursor-pointer ml-auto">
                     <Trash2 size={13} /> Delete
@@ -429,6 +444,37 @@ export default function RecruiterJobsPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Delete Confirm Dialog ────────────────────────────────────────────── */}
+      {deleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200 dark:border-gray-800 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl">
+                <Trash2 size={20} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-white">Delete Job Posting</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">This action cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">
+              Are you sure you want to permanently delete this job posting?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteId(null)} disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={() => handleDelete(deleteId)} disabled={deleting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition-all cursor-pointer">
+                {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

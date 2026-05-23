@@ -22,18 +22,27 @@ interface CreateNotifInput {
 
 export async function createNotification(input: CreateNotifInput) {
   try {
-    return await Notification.create({
+    // 1. Build a strict, safely-cast payload object first
+    const notificationPayload: Record<string, any> = {
       recipientId: new mongoose.Types.ObjectId(input.recipientId.toString()),
-      senderId:    input.senderId
-        ? new mongoose.Types.ObjectId(input.senderId.toString())
-        : null,
-      type:    input.type,
-      title:   input.title,
-      message: input.message,
-      link:    input.link    ?? null,
-      meta:    input.meta    ?? {},
-      isRead:  false,
-    });
+      type:        input.type,
+      title:       input.title,
+      message:     input.message,
+      meta:        input.meta ?? {},
+      isRead:      false,
+    };
+
+    // 2. Only attach optional fields if they have valid values
+    if (input.senderId) {
+      notificationPayload.senderId = new mongoose.Types.ObjectId(input.senderId.toString());
+    }
+
+    if (input.link) {
+      notificationPayload.link = input.link;
+    }
+
+    // 3. Pass the payload directly to Mongoose
+    return await Notification.create(notificationPayload);
   } catch (err) {
     // Never throw — notifications are non-critical side effects
     console.error("[createNotification]", err);

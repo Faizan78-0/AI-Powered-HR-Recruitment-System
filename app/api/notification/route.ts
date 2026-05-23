@@ -48,8 +48,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       data: notifications.map((n: any) => ({
         ...n,
-        id:  n._id.toString(),
+        id:  undefined,
         _id: undefined,
+        recipientId:undefined,
+        senderId:undefined,
+        applicationId:undefined,
+        interviewId:undefined,
       })),
       total,
       unreadCount,

@@ -34,12 +34,11 @@ export const fmtDateTime = (d: string | Date) =>
     minute: "2-digit",
   }).format(new Date(d));
 
-// FIXED: Added a check for 'n'. Returns empty string or fallback if n is null/undefined.
 export const initials = (n?: string | null) => {
   if (!n) return "";
   return n
     .trim()
-    .split(/\s+/) // Splits by any whitespace to handle double spaces
+    .split(/\s+/)
     .map((x) => x[0])
     .join("")
     .toUpperCase()
@@ -78,81 +77,68 @@ export const APP_CFG: Record<
   ApplicationStatus,
   { label: string; color: string; bg: string }
 > = {
-  APPLIED: { label: "Applied", color: "text-blue-700", bg: "bg-blue-100" },
-  SCREENING: {
-    label: "Screening",
-    color: "text-yellow-700",
-    bg: "bg-yellow-100",
-  },
-  INTERVIEW: {
-    label: "Interview",
-    color: "text-purple-700",
-    bg: "bg-purple-100",
-  },
-  ASSESSMENT: {
-    label: "Assessment",
-    color: "text-orange-700",
-    bg: "bg-orange-100",
-  },
-  OFFER: { label: "Offer", color: "text-teal-700", bg: "bg-teal-100" },
-  HIRED: { label: "Hired", color: "text-green-700", bg: "bg-green-100" },
-  REJECTED: { label: "Rejected", color: "text-red-700", bg: "bg-red-100" },
-  WITHDRAWN: { label: "Withdrawn", color: "text-gray-600", bg: "bg-gray-100" },
+  APPLIED:              { label: "Applied",              color: "text-blue-700",   bg: "bg-blue-100"   },
+  SCREENING:            { label: "Screening",            color: "text-yellow-700", bg: "bg-yellow-100" },
+  REVIEWING:            { label: "Reviewing",            color: "text-sky-700",    bg: "bg-sky-100"    },
+  INTERVIEW:            { label: "Interview",            color: "text-purple-700", bg: "bg-purple-100" },
+  INTERVIEW_SCHEDULED:  { label: "Interview Scheduled",  color: "text-violet-700", bg: "bg-violet-100" },
+  ASSESSMENT:           { label: "Assessment",           color: "text-orange-700", bg: "bg-orange-100" },
+  OFFER:                { label: "Offer",                color: "text-teal-700",   bg: "bg-teal-100"   },
+  ACCEPTED:             { label: "Accepted",             color: "text-emerald-700",bg: "bg-emerald-100"},
+  HIRED:                { label: "Hired",                color: "text-green-700",  bg: "bg-green-100"  },
+  REJECTED:             { label: "Rejected",             color: "text-red-700",    bg: "bg-red-100"    },
+  WITHDRAWN:            { label: "Withdrawn",            color: "text-gray-600",   bg: "bg-gray-100"   },
 };
 
 export const JOB_CFG: Record<
   JobStatus,
   { label: string; color: string; bg: string }
 > = {
-  DRAFT: { label: "Draft", color: "text-gray-600", bg: "bg-gray-100" },
-  OPEN: { label: "Open", color: "text-green-700", bg: "bg-green-100" },
-  PAUSED: { label: "Paused", color: "text-yellow-700", bg: "bg-yellow-100" },
-  CLOSED: { label: "Closed", color: "text-red-700", bg: "bg-red-100" },
-  FILLED: { label: "Filled", color: "text-blue-700", bg: "bg-blue-100" },
+  DRAFT:  { label: "Draft",  color: "text-gray-600",   bg: "bg-gray-100"  },
+  OPEN:   { label: "Open",   color: "text-green-700",  bg: "bg-green-100" },
+  PAUSED: { label: "Paused", color: "text-yellow-700", bg: "bg-yellow-100"},
+  CLOSED: { label: "Closed", color: "text-red-700",    bg: "bg-red-100"   },
+  FILLED: { label: "Filled", color: "text-blue-700",   bg: "bg-blue-100"  },
 };
 
 export const IV_CFG: Record<
   InterviewStatus,
   { label: string; color: string; bg: string }
 > = {
-  SCHEDULED: { label: "Scheduled", color: "text-blue-700", bg: "bg-blue-100" },
-  COMPLETED: {
-    label: "Completed",
-    color: "text-green-700",
-    bg: "bg-green-100",
-  },
-  CANCELLED: { label: "Cancelled", color: "text-red-700", bg: "bg-red-100" },
-  NO_SHOW: { label: "No Show", color: "text-orange-700", bg: "bg-orange-100" },
+  SCHEDULED: { label: "Scheduled", color: "text-blue-700",   bg: "bg-blue-100"  },
+  COMPLETED: { label: "Completed", color: "text-green-700",  bg: "bg-green-100" },
+  CANCELLED: { label: "Cancelled", color: "text-red-700",    bg: "bg-red-100"   },
+  NO_SHOW:   { label: "No Show",   color: "text-orange-700", bg: "bg-orange-100"},
 };
 
-export const JOB_TYPE_L: Record<JobType, string> = {
-  FULL_TIME: "Full-time",
-  PART_TIME: "Part-time",
-  CONTRACT: "Contract",
-  INTERNSHIP: "Internship",
-  REMOTE: "Remote",
-};
+// export const JOB_TYPE_L: Record<JobType, string> = {
+//   FULL_TIME:  "Full-time",
+//   PART_TIME:  "Part-time",
+//   CONTRACT:   "Contract",
+//   INTERNSHIP: "Internship",
+//   REMOTE:     "Remote",
+// };
 
 export const EXP_L: Record<ExperienceLevel, string> = {
-  ENTRY: "Entry Level",
-  MID: "Mid Level",
-  SENIOR: "Senior",
-  LEAD: "Lead",
+  ENTRY:     "Entry Level",
+  MID:       "Mid Level",
+  SENIOR:    "Senior",
+  LEAD:      "Lead",
   EXECUTIVE: "Executive",
 };
 
 export const IV_TYPE_L: Record<InterviewType, string> = {
-  PHONE_SCREEN: "Phone Screen",
-  VIDEO_CALL: "Video Call",
-  TECHNICAL: "Technical",
-  HR_INTERVIEW: "HR Interview",
+  PHONE_SCREEN:    "Phone Screen",
+  VIDEO_CALL:      "Video Call",
+  TECHNICAL:       "Technical",
+  HR_INTERVIEW:    "HR Interview",
   FINAL_INTERVIEW: "Final Interview",
-  PANEL: "Panel Interview",
+  PANEL:           "Panel Interview",
 };
 
 export const AVAIL_L: Record<string, string> = {
   IMMEDIATE: "Immediately",
   "2_WEEKS": "2 Weeks Notice",
   "1_MONTH": "1 Month Notice",
-  OPEN: "Open to Discuss",
+  OPEN:      "Open to Discuss",
 };

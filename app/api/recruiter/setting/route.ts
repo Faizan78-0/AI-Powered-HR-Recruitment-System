@@ -1,57 +1,102 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
+import { cookies } from "next/headers";
+import { verifyToken } from "@/Utils/verifytoken";
 import User from "@/modal/user.modal";
-import { getSession } from "@/lib/auth"; 
 
-export async function GET(req: NextRequest) {
+async function getTokenUserId(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("token")?.value;
+  if (!token) return null;
+  const decoded = verifyToken(token);
+  return decoded?.userId ?? null;
+}
+
+/**
+ * GET /api/recruiter/setting
+ * Returns jobTitle, company, and bio from the User document.
+ */
+export async function GET() {
   try {
-    // 1. Ensure connectDB does not expect 'req'
     await connectDB();
 
-    // 2. Fix: Most getSession helpers in Next.js 13+ (App Router) 
-    // expect an object { req } or are called without arguments if using headers()
-    const session = await getSession({ req }); 
+    const userId = await getTokenUserId();
+    if (!userId) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
 
-    // if (!session?.user?.id) {
-    //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    // }
+    const user = await User.findById(userId)
+      .select("jobTitle company bio")
+      .lean();
 
-    const profile = await User.findOne({ userId: session.user.id }).lean();
-    return NextResponse.json(profile || {});
+    if (!user) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(
+      {
+        jobTitle: user.jobTitle ?? "",
+        company:  user.company  ?? "",
+        bio:      user.bio      ?? "",
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("GET_RECRUITER_SETTINGS_ERROR:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
+/**
+ * PATCH /api/recruiter/setting
+ * Updates jobTitle, company, and/or bio on the User document.
+ *
+ * Body:
+ *   { jobTitle?: string; company?: string; bio?: string }
+ */
 export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
 
-    // 2. Fix: Apply the same session fix here
-    // const session = await getSession({ req });
-
-    // if (!session?.user?.id) {
-    //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    // }
+    const userId = await getTokenUserId();
+    if (!userId) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await req.json();
+    const { jobTitle, company, bio } = body as {
+      jobTitle?: string;
+      company?:  string;
+      bio?:      string;
+    };
 
-    const updated = await User.findOneAndUpdate(
-      // { userId: session.user.id },
-      { 
-        $set: {
-          company: body.company,
-          jobTitle: body.jobTitle,
-        
-          website: body.website,
-          bio: body.bio
-        }
+    const updateData: Record<string, string> = {};
+    if (jobTitle !== undefined) updateData.jobTitle = jobTitle.trim();
+    if (company  !== undefined) updateData.company  = company.trim();
+    if (bio      !== undefined) updateData.bio      = bio.trim();
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ message: "No fields to update" }, { status: 400 });
+    }
+
+    const updated = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select("jobTitle company bio");
+
+    if (!updated) {
+      return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(
+      {
+        jobTitle: updated.jobTitle ?? "",
+        company:  updated.company  ?? "",
+        bio:      updated.bio      ?? "",
       },
-      { new: true, upsert: true, runValidators: true }
+      { status: 200 }
     );
-
-    return NextResponse.json(updated);
   } catch (error) {
     console.error("PATCH_RECRUITER_SETTINGS_ERROR:", error);
     return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });

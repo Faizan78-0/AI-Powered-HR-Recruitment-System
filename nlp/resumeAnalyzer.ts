@@ -1,8 +1,6 @@
 // src/lib/nlp/resumeAnalyzer.ts
 // Pure TypeScript NLP resume analysis engine — no external ML deps needed
 
-import { Key } from "react";
-
 // ─── Skill Taxonomy ───────────────────────────────────────────────────────────
 const SKILL_TAXONOMY: Record<string, string[]> = {
   // Frontend
@@ -71,11 +69,11 @@ const SKILL_TAXONOMY: Record<string, string[]> = {
 
 // ─── Education Keywords ───────────────────────────────────────────────────────
 const DEGREES = [
-  { pattern: /\b(ph\.?d\.?|doctor(?:ate)?)\b/gi, level: "PhD", weight: 5 },
-  { pattern: /\b(m\.?s\.?|m\.?eng\.?|master(?:'s)?|mba|m\.?b\.?a\.?)\b/gi, level: "Masters", weight: 4 },
-  { pattern: /\b(b\.?s\.?|b\.?e\.?|b\.?tech\.?|bachelor(?:'s)?|undergraduate)\b/gi, level: "Bachelors", weight: 3 },
-  { pattern: /\b(associate(?:'s)?|a\.?s\.?|a\.?a\.?)\b/gi, level: "Associates", weight: 2 },
-  { pattern: /\b(bootcamp|boot camp|certificate|certification|nanodegree)\b/gi, level: "Certificate", weight: 1 },
+  { pattern: /\b(ph\.?d\.?|doctor(?:ate)?)\b/gi,                                    level: "PhD",         weight: 5 },
+  { pattern: /\b(m\.?s\.?|m\.?eng\.?|master(?:'s)?|mba|m\.?b\.?a\.?)\b/gi,        level: "Masters",     weight: 4 },
+  { pattern: /\b(b\.?s\.?|b\.?e\.?|b\.?tech\.?|bachelor(?:'s)?|undergraduate)\b/gi, level: "Bachelors",   weight: 3 },
+  { pattern: /\b(associate(?:'s)?|a\.?s\.?|a\.?a\.?)\b/gi,                          level: "Associates",  weight: 2 },
+  { pattern: /\b(bootcamp|boot camp|certificate|certification|nanodegree)\b/gi,      level: "Certificate", weight: 1 },
 ];
 
 const TOP_UNIVERSITIES = [
@@ -111,26 +109,26 @@ const ACHIEVEMENT_PATTERNS = [
 
 // ─── Red Flags ────────────────────────────────────────────────────────────────
 const RED_FLAGS = [
-  { pattern: /\b(responsible for|helped with|assisted in|worked on|involved in)\b/gi, msg: "Weak action verbs — prefer impact-driven language (built, led, architected, delivered)" },
+  { pattern: /\b(responsible for|helped with|assisted in|worked on|involved in)\b/gi,          msg: "Weak action verbs — prefer impact-driven language (built, led, architected, delivered)" },
   { pattern: /\b(detail[- ]oriented|team player|hard[- ]working|self[- ]starter|go[- ]getter|passionate about)\b/gi, msg: "Overused buzzwords that add little signal" },
-  { pattern: /\b(proficient|familiar|exposure|knowledge of|understanding of)\b/gi, msg: "Vague skill claims — prefer demonstrated experience with specific examples" },
+  { pattern: /\b(proficient|familiar|exposure|knowledge of|understanding of)\b/gi,             msg: "Vague skill claims — prefer demonstrated experience with specific examples" },
 ];
 
 // ─── Section Detection ────────────────────────────────────────────────────────
 const SECTIONS: Record<string, RegExp> = {
-  experience: /\b(work experience|professional experience|employment|experience|career history|work history)\b/gi,
-  education: /\b(education|academic|qualifications?|degrees?|university|college)\b/gi,
-  skills: /\b(skills?|technical skills?|competenc(?:ies|y)|technologies?|tools?|tech stack)\b/gi,
-  projects: /\b(projects?|portfolio|personal projects?|side projects?|open source)\b/gi,
-  achievements: /\b(achievements?|accomplishments?|awards?|honors?|recognition)\b/gi,
-  certifications: /\b(certifications?|credentials?|licenses?|certificates?)\b/gi,
-  summary: /\b(summary|objective|profile|about|overview|bio)\b/gi,
+  experience:      /\b(work experience|professional experience|employment|experience|career history|work history)\b/gi,
+  education:       /\b(education|academic|qualifications?|degrees?|university|college)\b/gi,
+  skills:          /\b(skills?|technical skills?|competenc(?:ies|y)|technologies?|tools?|tech stack)\b/gi,
+  projects:        /\b(projects?|portfolio|personal projects?|side projects?|open source)\b/gi,
+  achievements:    /\b(achievements?|accomplishments?|awards?|honors?|recognition)\b/gi,
+  certifications:  /\b(certifications?|credentials?|licenses?|certificates?)\b/gi,
+  summary:         /\b(summary|objective|profile|about|overview|bio)\b/gi,
 };
 
 // ─── Main Analyzer ────────────────────────────────────────────────────────────
 export interface ResumeAnalysis {
   recommendations: any;
-  overallScore: number;                        // 0–100
+  overallScore: number;
   grade: "A+" | "A" | "B+" | "B" | "C+" | "C" | "D" | "F";
   scores: {
     skills: number;
@@ -141,9 +139,8 @@ export interface ResumeAnalysis {
     keywords: number;
   };
   detectedSkills: { name: string; category: string }[];
-  skillCategories: {
-    name: Key | null | undefined; category: string; skills: string[]; count: number 
-}[];
+  // Fixed: removed the unused `name` field — `category` already identifies each group
+  skillCategories: { category: string; skills: string[]; count: number }[];
   yearsExperience: number | null;
   seniorityLevel: string;
   educationLevel: string;
@@ -155,8 +152,8 @@ export interface ResumeAnalysis {
   improvements: string[];
   keywordDensity: number;
   wordCount: number;
-  atsScore: number;                            // Applicant Tracking System friendliness
-  jobMatchScore: number | null;               // if job description provided
+  atsScore: number;
+  jobMatchScore: number | null;
   matchedKeywords: string[];
   missingKeywords: string[];
   summary: string;
@@ -182,17 +179,16 @@ function detectSkills(text: string): { name: string; category: string }[] {
   const found = new Set<string>();
   const results: { name: string; category: string }[] = [];
 
-  // Categorise skills
   const CATEGORIES: Record<string, string[]> = {
-    "Frontend": ["React", "Vue", "Angular", "TypeScript", "JavaScript", "HTML", "CSS", "Next.js", "GraphQL", "Redux"],
-    "Backend": ["Node.js", "Python", "Java", "Go", "Rust", "C#", "PHP", "Ruby"],
-    "Database": ["PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "SQLite", "DynamoDB", "Cassandra"],
-    "Cloud & DevOps": ["AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "CI/CD", "Linux"],
-    "Data & ML": ["Machine Learning", "TensorFlow", "PyTorch", "Data Science", "Spark", "Kafka"],
-    "Testing": ["Jest", "Cypress", "TDD"],
-    "Mobile": ["React Native", "iOS", "Android", "Flutter"],
-    "Soft Skills": ["Leadership", "Communication", "Problem Solving", "Agile", "System Design"],
-    "Security": ["Security"],
+    "Frontend":      ["React", "Vue", "Angular", "TypeScript", "JavaScript", "HTML", "CSS", "Next.js", "GraphQL", "Redux"],
+    "Backend":       ["Node.js", "Python", "Java", "Go", "Rust", "C#", "PHP", "Ruby"],
+    "Database":      ["PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "SQLite", "DynamoDB", "Cassandra"],
+    "Cloud & DevOps":["AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "CI/CD", "Linux"],
+    "Data & ML":     ["Machine Learning", "TensorFlow", "PyTorch", "Data Science", "Spark", "Kafka"],
+    "Testing":       ["Jest", "Cypress", "TDD"],
+    "Mobile":        ["React Native", "iOS", "Android", "Flutter"],
+    "Soft Skills":   ["Leadership", "Communication", "Problem Solving", "Agile", "System Design"],
+    "Security":      ["Security"],
   };
 
   const skillToCategory = new Map<string, string>();
@@ -221,7 +217,6 @@ function detectExperience(text: string): number | null {
     const m = pat.exec(text);
     if (m) return parseInt(m[1]);
   }
-  // Estimate from year ranges like "2018 – 2024"
   const yearRanges = text.matchAll(/\b(20\d{2}|19\d{2})\s*[-–—to]+\s*(20\d{2}|present|current|now)\b/gi);
   let totalYears = 0;
   const currentYear = new Date().getFullYear();
@@ -287,24 +282,28 @@ function detectSections(text: string): { name: string; found: boolean }[] {
   });
 }
 
-function calcATSScore(text: string, skills: { name: string }[], sections: { name: string; found: boolean }[]): number {
+function calcATSScore(
+  text: string,
+  skills: { name: string }[],
+  sections: { name: string; found: boolean }[]
+): number {
   let score = 50;
-  // Has key sections
   const foundSections = sections.filter(s => s.found).length;
   score += Math.min(20, foundSections * 4);
-  // Not too many special characters (ATS unfriendly)
   const specialCharRatio = (text.match(/[|■▪◆→✓✗★]/g) || []).length / text.length;
   if (specialCharRatio > 0.01) score -= 10;
-  // Skill count
   score += Math.min(20, skills.length * 1.5);
-  // Has contact info signals
   if (/\b[\w.+-]+@[\w-]+\.\w+\b/.test(text)) score += 5;
   if (/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/.test(text)) score += 3;
   if (/linkedin\.com/i.test(text)) score += 2;
   return Math.min(100, Math.max(0, Math.round(score)));
 }
 
-function jobMatchAnalysis(resumeText: string, jobDescription: string, resumeSkills: { name: string }[]): { score: number; matched: string[]; missing: string[] } {
+function jobMatchAnalysis(
+  resumeText: string,
+  jobDescription: string,
+  resumeSkills: { name: string }[]
+): { score: number; matched: string[]; missing: string[] } {
   if (!jobDescription.trim()) return { score: 0, matched: [], missing: [] };
   const jobSkills = detectSkills(jobDescription);
   const resumeSkillNames = new Set(resumeSkills.map(s => s.name.toLowerCase()));
@@ -322,92 +321,101 @@ export function analyzeResume(resumeText: string, jobDescription = ""): ResumeAn
   const text = resumeText;
   const wordCount = text.trim().split(/\s+/).length;
 
-  // Detect everything
-  const detectedSkills = detectSkills(text);
-  const yearsExperience = detectExperience(text);
-  const seniorityLevel = detectSeniority(text);
+  const detectedSkills   = detectSkills(text);
+  const yearsExperience  = detectExperience(text);
+  const seniorityLevel   = detectSeniority(text);
   const { level: educationLevel, topUni } = detectEducation(text);
-  const achievements = detectAchievements(text);
-  const redFlags = detectRedFlags(text);
-  const sections = detectSections(text);
+  const achievements     = detectAchievements(text);
+  const redFlags         = detectRedFlags(text);
+  const sections         = detectSections(text);
 
-  // Group skills by category
+  // Group skills by category — shape matches the fixed interface (no `name` field)
   const catMap = new Map<string, string[]>();
   for (const { name, category } of detectedSkills) {
     if (!catMap.has(category)) catMap.set(category, []);
     catMap.get(category)!.push(name);
   }
-  const skillCategories = [...catMap.entries()].map(([category, skills]) => ({ category, skills, count: skills.length })).sort((a, b) => b.count - a.count);
+  const skillCategories = [...catMap.entries()]
+    .map(([category, skills]) => ({ category, skills, count: skills.length }))
+    .sort((a, b) => b.count - a.count);
 
   // Component scores
   const skillScore = Math.min(100, Math.round(detectedSkills.length * 4.5));
 
   const expScore = (() => {
     if (yearsExperience === null) return 30;
-    if (yearsExperience >= 10) return 100;
-    if (yearsExperience >= 7) return 88;
-    if (yearsExperience >= 5) return 78;
-    if (yearsExperience >= 3) return 65;
-    if (yearsExperience >= 1) return 50;
+    if (yearsExperience >= 10)   return 100;
+    if (yearsExperience >= 7)    return 88;
+    if (yearsExperience >= 5)    return 78;
+    if (yearsExperience >= 3)    return 65;
+    if (yearsExperience >= 1)    return 50;
     return 35;
   })();
 
   const eduScore = (() => {
-    const base = { "PhD": 100, "Masters": 88, "Bachelors": 75, "Associates": 55, "Certificate": 50, "Unknown": 40 }[educationLevel] ?? 40;
+    const base = (
+      { "PhD": 100, "Masters": 88, "Bachelors": 75, "Associates": 55, "Certificate": 50, "Unknown": 40 }
+      [educationLevel] ?? 40
+    );
     return Math.min(100, base + (topUni ? 10 : 0));
   })();
 
-  const achievementScore = Math.min(100, achievements.length * 18);
+  const achievementScore  = Math.min(100, achievements.length * 18);
   const foundSectionCount = sections.filter(s => s.found).length;
-  const formattingScore = Math.min(100, Math.round(
+  const formattingScore   = Math.min(100, Math.round(
     (foundSectionCount / sections.length) * 60 +
     (wordCount >= 300 && wordCount <= 1000 ? 25 : wordCount >= 200 ? 15 : 5) +
     (redFlags.length === 0 ? 15 : Math.max(0, 15 - redFlags.length * 5))
   ));
 
-  const keywordDensity = wordCount > 0 ? Math.round((detectedSkills.length / wordCount) * 1000) / 10 : 0;
+  const keywordDensity = wordCount > 0
+    ? Math.round((detectedSkills.length / wordCount) * 1000) / 10
+    : 0;
   const keywordScore = Math.min(100, Math.round(keywordDensity * 15));
 
-  // Overall weighted score
   const overallScore = Math.min(100, Math.round(
-    skillScore * 0.25 +
-    expScore * 0.25 +
-    eduScore * 0.15 +
-    achievementScore * 0.20 +
+    skillScore      * 0.25 +
+    expScore        * 0.25 +
+    eduScore        * 0.15 +
+    achievementScore* 0.20 +
     formattingScore * 0.10 +
-    keywordScore * 0.05
+    keywordScore    * 0.05
   ));
 
   const atsScore = calcATSScore(text, detectedSkills, sections);
-  const { score: jobMatchScore, matched: matchedKeywords, missing: missingKeywords } = jobMatchAnalysis(text, jobDescription, detectedSkills);
+  const {
+    score: jobMatchScore,
+    matched: matchedKeywords,
+    missing: missingKeywords,
+  } = jobMatchAnalysis(text, jobDescription, detectedSkills);
 
   // Strengths
   const strengths: string[] = [];
-  if (detectedSkills.length >= 10) strengths.push(`Strong technical breadth — ${detectedSkills.length} skills detected across ${skillCategories.length} categories`);
-  if (achievements.length >= 3) strengths.push(`${achievements.length} quantifiable achievements demonstrate real impact`);
+  if (detectedSkills.length >= 10)   strengths.push(`Strong technical breadth — ${detectedSkills.length} skills detected across ${skillCategories.length} categories`);
+  if (achievements.length >= 3)      strengths.push(`${achievements.length} quantifiable achievements demonstrate real impact`);
   if (yearsExperience !== null && yearsExperience >= 5) strengths.push(`${yearsExperience}+ years of experience signals deep expertise`);
-  if (topUni) strengths.push("Degree from a top-tier university");
+  if (topUni)                        strengths.push("Degree from a top-tier university");
   if (educationLevel === "PhD" || educationLevel === "Masters") strengths.push(`${educationLevel} degree shows advanced academic commitment`);
-  if (foundSectionCount >= 5) strengths.push("Well-structured resume with all key sections present");
-  if (redFlags.length === 0) strengths.push("Clean, professional language — no weak buzzwords detected");
+  if (foundSectionCount >= 5)        strengths.push("Well-structured resume with all key sections present");
+  if (redFlags.length === 0)         strengths.push("Clean, professional language — no weak buzzwords detected");
   if (detectedSkills.some(s => s.category === "Cloud & DevOps")) strengths.push("Cloud and DevOps skills are highly valued in the market");
-  if (atsScore >= 80) strengths.push("ATS-friendly format — will parse well through applicant tracking systems");
+  if (atsScore >= 80)                strengths.push("ATS-friendly format — will parse well through applicant tracking systems");
 
   // Improvements
   const improvements: string[] = [];
-  if (detectedSkills.length < 8) improvements.push("List more specific technical skills — recruiters scan for keywords");
-  if (achievements.length < 2) improvements.push("Add 3–5 quantified achievements (e.g. 'Reduced load time by 40%', 'Grew ARR by $2M')");
-  if (yearsExperience === null) improvements.push("Clarify total years of experience — include explicit date ranges for each role");
-  if (!sections.find(s => s.name === "Summary")?.found) improvements.push("Add a 2–3 sentence professional summary at the top");
+  if (detectedSkills.length < 8)    improvements.push("List more specific technical skills — recruiters scan for keywords");
+  if (achievements.length < 2)      improvements.push("Add 3–5 quantified achievements (e.g. 'Reduced load time by 40%', 'Grew ARR by $2M')");
+  if (yearsExperience === null)      improvements.push("Clarify total years of experience — include explicit date ranges for each role");
+  if (!sections.find(s => s.name === "Summary")?.found)  improvements.push("Add a 2–3 sentence professional summary at the top");
   if (!sections.find(s => s.name === "Projects")?.found) improvements.push("Include a Projects section — especially valuable for engineers");
-  if (wordCount < 300) improvements.push("Resume feels thin — aim for 400–700 words for most roles");
-  if (wordCount > 1200) improvements.push("Resume is long — trim to 1 page (≤700 words) for under 10 years experience");
-  if (redFlags.length > 0) improvements.push("Replace weak phrases like 'responsible for' with strong action verbs (built, delivered, architected)");
+  if (wordCount < 300)               improvements.push("Resume feels thin — aim for 400–700 words for most roles");
+  if (wordCount > 1200)              improvements.push("Resume is long — trim to 1 page (≤700 words) for under 10 years experience");
+  if (redFlags.length > 0)           improvements.push("Replace weak phrases like 'responsible for' with strong action verbs (built, delivered, architected)");
   if (missingKeywords.length > 3 && jobDescription) improvements.push(`Add ${missingKeywords.slice(0, 3).join(", ")} to better match this job's requirements`);
   if (!(/linkedin\.com/i.test(text))) improvements.push("Add your LinkedIn URL for social proof");
 
-  // Summary text
-  const summary = `This resume scores ${overallScore}/100 (${scoreToGrade(overallScore)}). ` +
+  const summary =
+    `This resume scores ${overallScore}/100 (${scoreToGrade(overallScore)}). ` +
     `${detectedSkills.length} skills detected, ${yearsExperience !== null ? yearsExperience + " years experience estimated" : "experience unclear"}. ` +
     `${achievements.length} quantifiable achievements found. ` +
     (jobDescription ? `Job match: ${jobMatchScore}%. ` : "") +
@@ -417,12 +425,12 @@ export function analyzeResume(resumeText: string, jobDescription = ""): ResumeAn
     overallScore,
     grade: scoreToGrade(overallScore),
     scores: {
-      skills: skillScore,
-      experience: expScore,
-      education: eduScore,
+      skills:       skillScore,
+      experience:   expScore,
+      education:    eduScore,
       achievements: achievementScore,
-      formatting: formattingScore,
-      keywords: keywordScore,
+      formatting:   formattingScore,
+      keywords:     keywordScore,
     },
     detectedSkills,
     skillCategories,
@@ -433,14 +441,15 @@ export function analyzeResume(resumeText: string, jobDescription = ""): ResumeAn
     sections,
     achievements,
     redFlags,
-    strengths: strengths.slice(0, 6),
-    improvements: improvements.slice(0, 6),
+    strengths:       strengths.slice(0, 6),
+    improvements:    improvements.slice(0, 6),
     keywordDensity,
     wordCount,
     atsScore,
-    jobMatchScore: jobDescription ? jobMatchScore : null,
+    jobMatchScore:   jobDescription ? jobMatchScore : null,
     matchedKeywords,
     missingKeywords,
     summary,
+    recommendations: null,
   };
 }

@@ -35,7 +35,6 @@ export async function GET(req: NextRequest) {
     );
     const skip = (page - 1) * limit;
 
-    // Filter by logged-in recruiter for security
     const filter: any = {
       recruiterId: new mongoose.Types.ObjectId(auth.userId),
     };
@@ -44,7 +43,8 @@ export async function GET(req: NextRequest) {
     if (search) {
       filter.$or = [
         { title: { $regex: search, $options: "i" } },
-        { company: { $regex: search, $options: "i" } },
+        { department: { $regex: search, $options: "i" } },
+        { requiredSkills: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -53,11 +53,13 @@ export async function GET(req: NextRequest) {
       Job.countDocuments(filter),
     ]);
 
-    // Map through the jobs to strip out sensitive/unwanted fields
+    // FIX: Keep _id as string "id" so the frontend can use it for edit/delete/toggle
     const sanitizedData = rawData.map((job: any) => {
-      const { recruiterId, _id, ...rest } = job;
-
-      return rest;
+      const { recruiterId, _id, __v, ...rest } = job;
+      return {
+        ...rest,
+        id: _id.toString(), // expose as "id" string — frontend resolveId() handles this
+      };
     });
 
     const response: PaginatedResponse<Omit<IJob, "recruiterId">> = {
@@ -88,7 +90,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
-    // Required Field Validation
     const required = ["title", "company", "location", "type", "description"];
     for (const field of required) {
       if (!body[field])
@@ -104,7 +105,12 @@ export async function POST(req: NextRequest) {
       status: body.status || "DRAFT",
     });
 
-    return NextResponse.json({ message: "job post" }, { status: 201 });
+    // FIX: Return the created job so the frontend can optimistically add it to the list
+    const { recruiterId, _id, __v, ...jobData } = newJob.toObject();
+    return NextResponse.json(
+      { ...jobData, id: _id.toString() },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("[JOBS_POST]", error);
     return NextResponse.json(
@@ -114,9 +120,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ── PATCH: UPDATE JOB (WITH OWNERSHIP CHECK) ──────────────────────────────────
-// ── PATCH: UPDATE JOB ──────────────────────────────────
-
+// ── PATCH: UPDATE JOB ────────────────────────────────────────────────────────
 export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
@@ -127,7 +131,6 @@ export async function PATCH(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const body = await req.json();
 
-    // Look for ID in URL first, then fall back to body
     const id = searchParams.get("id") || body.id || body._id;
 
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
@@ -137,12 +140,14 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // Security: Filter by _id AND recruiterId
+    // Strip id fields from the body so they don't accidentally overwrite _id
+    const { id: _bodyId, _id: _bodyMongoId, recruiterId: _r, ...updateFields } = body;
+
     const updatedJob = await Job.findOneAndUpdate(
       { _id: id, recruiterId: auth.userId },
-      { $set: body },
+      { $set: updateFields },
       { new: true, runValidators: true }
-    ).lean();
+    ).lean() as any;
 
     if (!updatedJob) {
       return NextResponse.json(
@@ -151,7 +156,9 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ message: "job update" });
+    // FIX: Return the updated job so the frontend can update its local state
+    const { recruiterId, _id, __v, ...jobData } = updatedJob;
+    return NextResponse.json({ ...jobData, id: _id.toString() });
   } catch (error) {
     console.error("PATCH_ERROR:", error);
     return NextResponse.json(
@@ -160,6 +167,7 @@ export async function PATCH(req: NextRequest) {
     );
   }
 }
+
 // ── DELETE: REMOVE JOB ───────────────────────────────────────────────────────
 export async function DELETE(req: NextRequest) {
   try {
@@ -174,7 +182,6 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Invalid Job ID" }, { status: 400 });
     }
 
-    // Security: Only delete if the job belongs to this recruiter
     const deletedJob = await Job.findOneAndDelete({
       _id: id,
       recruiterId: auth.userId,

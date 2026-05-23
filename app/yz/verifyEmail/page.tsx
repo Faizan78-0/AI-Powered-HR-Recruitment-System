@@ -1,26 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState, ChangeEvent, KeyboardEvent, FormEvent } from "react";
-import { useRouter,useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, ChangeEvent, KeyboardEvent, FormEvent, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { useAuthStore } from "@/Authstore/store"; // Adjust path to your store
 import toast from "react-hot-toast";
 
-export default function verifyEmail  ()  {
+// 1. Core verification form logic (Handles client-side search query logic)
+function VerifyEmailForm() {
   const [code, setCode] = useState<string[]>(["", "", "", "", "", ""]);
-  // Properly type the array of input elements
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const router = useRouter();
   const searchParams = useSearchParams();
   
   const role = searchParams.get("user_role");
-  // Assuming your store is typed. If not, you may need to define an interface for it.
   const { error, isLoading, verifyEmail } = useAuthStore() as any;
 
   const handleChange = (index: number, value: string) => {
     const newCode = [...code];
 
-    // Handle pasted content
+    // Handle pasted content cleanly
     if (value.length > 1) {
       const pastedCode = value.slice(0, 6).split("");
       for (let i = 0; i < 6; i++) {
@@ -28,7 +27,7 @@ export default function verifyEmail  ()  {
       }
       setCode(newCode);
 
-      // Focus on the last non-empty input or the first empty one
+      // Focus on the last non-empty input or fallback to the final input field
       const lastFilledIndex = newCode.findLastIndex((digit) => digit !== "");
       const focusIndex = lastFilledIndex < 5 ? lastFilledIndex + 1 : 5;
       inputRefs.current[focusIndex]?.focus();
@@ -36,7 +35,7 @@ export default function verifyEmail  ()  {
       newCode[index] = value;
       setCode(newCode);
 
-      // Move focus to the next input field if value is entered
+      // Move focus to the next input field if a digit was typed
       if (value && index < 5) {
         inputRefs.current[index + 1]?.focus();
       }
@@ -66,7 +65,7 @@ export default function verifyEmail  ()  {
     }
   };
 
-  // Auto submit when all fields are filled
+  // Automatically submit once all 6 digits have been inputted
   useEffect(() => {
     if (code.every((digit) => digit !== "")) {
       handleSubmit();
@@ -125,5 +124,22 @@ export default function verifyEmail  ()  {
       </motion.div>
     </div>
   );
-};
+}
 
+// 2. Default exported page containing the required Suspense wrapper to fix the static build error
+export default function VerifyEmailPage() {
+  return (
+    <Suspense 
+      fallback={
+        <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white font-medium">
+          <div className="text-center">
+            <p className="text-xl font-semibold mb-2">Loading verification window...</p>
+            <p className="text-sm text-gray-400">Securing environment parameters</p>
+          </div>
+        </div>
+      }
+    >
+      <VerifyEmailForm />
+    </Suspense>
+  );
+}

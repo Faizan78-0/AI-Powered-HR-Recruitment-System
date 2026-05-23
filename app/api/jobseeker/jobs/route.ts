@@ -209,11 +209,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        id: populated._id.toString(),
+        id: undefined,
         status: populated.status,
-        appliedAt: populated.appliedAt,
-        applicationId: populated._id.toString(),
-        jobId: populated.jobId?._id?.toString() ?? jobId,
+        appliedAt: undefined,
+        applicationId:undefined,
+        jobId: undefined,
         jobTitle: populated.jobId?.title ?? job.title,
         company: populated.jobId?.company ?? job.company,
       },

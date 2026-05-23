@@ -138,7 +138,7 @@ export default function ResumeAnalyzerPage() {
           {analysis && (
             <button onClick={reset} className="btn-secondary btn-sm cursor-pointer">← New Analysis</button>
           )}
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100  text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-bold">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-700  text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-bold">
             <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" /> NLP Engine Active
           </span>
         </div>

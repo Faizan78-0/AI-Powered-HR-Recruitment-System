@@ -1,18 +1,13 @@
-// app/api/recruiter/candidates/route.ts
-//
-// Queries the Candidate collection directly — each record was created when
-// the seeker applied (see /api/seeker/apply) so all recruiter-facing data
-// is immediately available without cross-collection joins for the list view..
-
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { cookies } from "next/headers";
-
 import { connectDB } from "@/lib/db";
 import { verifyToken } from "@/Utils/verifytoken";
-import Candidate from "@/modal/candiate.modal";
+import User from "@/modal/user.modal";
 import Job from "@/modal/job.modal";
 import Application from "@/modal/application.modal";
+import Conversation from "@/modal/conversation.modal";
+import type { ApplicationStatus } from "@/types";
 
 async function getAuth() {
   const cookieStore = await cookies();
@@ -21,35 +16,7 @@ async function getAuth() {
   return verifyToken(token) as { userId: string } | null;
 }
 
-// Shape a Candidate document → UI-ready object
-function toShape(c: any) {
-  return {
-    id:            c._id.toString(),
-    _id:           c._id.toString(),
-    applicationId: c.applicationId?.toString() ?? c._id.toString(),
-    seekerId:      c.seekerId?.toString()  ?? null,
-    // Normalised name (schema stores lowercase string already)
-    name:          c.name  ?? "Unknown",
-    email:         c.email ?? "",
-    phone:         c.phone ?? null,
-    avatar:        null,              // not stored on Candidate — load on demand if needed
-    jobId:         c.jobId?.toString() ?? null,
-    jobTitle:      c.jobTitle ?? "Unknown Position",
-    company:       c.company  ?? "",
-    status:        c.status   ?? "APPLIED",
-    rating:        c.rating   ?? 3,
-    experience:    c.experience  ?? null,
-    skills:        c.skills      ?? [],
-    notes:         c.notes       ?? null,
-    resumeUrl:     c.resumeUrl   ?? null,
-    coverLetter:   c.coverLetter ?? null,
-    appliedAt:     c.appliedAt   ? new Date(c.appliedAt).toISOString() : null,
-    appliedDate:   c.appliedAt   ? new Date(c.appliedAt).toISOString() : null,
-  };
-}
-
 // ── GET /api/recruiter/candidates ─────────────────────────────────────────────
-// ?search= &status= &jobId= &minRating= &page= &limit=
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
@@ -58,75 +25,85 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const search    = searchParams.get("search")?.trim()  ?? "";
-    const status    = searchParams.get("status");
-    const jobIdParam = searchParams.get("jobId");
-    const minRating = Number(searchParams.get("minRating") ?? 0);
-    const page      = Math.max(1, Number(searchParams.get("page")  ?? 1));
-    const limit     = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? 20)));
-    const skip      = (page - 1) * limit;
+    const page   = Math.max(1, Number(searchParams.get("page")  ?? 1));
+    const limit  = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? 20)));
+    const skip   = (page - 1) * limit;
+    const search = searchParams.get("search")?.trim() ?? "";
+    const status = searchParams.get("status")?.trim() ?? "";
+    const jobId  = searchParams.get("jobId")?.trim()  ?? "";
 
-    const recruiterId = new mongoose.Types.ObjectId(auth.userId);
+    // Get all jobs belonging to this recruiter
+    const recruiterJobs = await Job.find({
+      recruiterId: new mongoose.Types.ObjectId(auth.userId),
+    })
+      .select("_id title company")
+      .lean() as any[];
 
-    // ── Build filter ──────────────────────────────────────────────────────
-    // recruiterId is indexed on Candidate — this is a single-collection query
-    const filter: any = { recruiterId };
+    const jobIds = recruiterJobs.map((j) => j._id);
+    if (jobIds.length === 0)
+      return NextResponse.json({ data: [], total: 0, jobs: [] });
 
-    if (status)         filter.status = status;
-    if (minRating > 0)  filter.rating = { $gte: minRating };
-    if (jobIdParam) {
-      if (!mongoose.Types.ObjectId.isValid(jobIdParam))
-        return NextResponse.json({ error: "Invalid jobId" }, { status: 400 });
-      filter.jobId = new mongoose.Types.ObjectId(jobIdParam);
-    }
+    // Build application filter
+    const appFilter: any = { jobId: { $in: jobIds } };
+    if (status && status !== "ALL") appFilter.status = status;
+    if (jobId  && mongoose.Types.ObjectId.isValid(jobId))
+      appFilter.jobId = new mongoose.Types.ObjectId(jobId);
 
-    // Text search — use $or on indexed fields
+    // If searching, resolve matching seeker IDs first
+    let seekerFilter: mongoose.Types.ObjectId[] | null = null;
     if (search) {
-      const re = new RegExp(search, "i");
-      filter.$or = [{ name: re }, { email: re }, { jobTitle: re }];
+      const matchingUsers = await User.find({
+        $or: [
+          { Name:  { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+        ],
+      })
+        .select("_id")
+        .lean() as any[];
+      seekerFilter = matchingUsers.map((u) => u._id);
+      appFilter.seekerId = { $in: seekerFilter };
     }
 
-    const [candidates, total, pipelineAgg] = await Promise.all([
-      Candidate.find(filter)
+    const [applications, total] = await Promise.all([
+      Application.find(appFilter)
         .sort({ appliedAt: -1 })
         .skip(skip)
         .limit(limit)
+        .populate({ path: "seekerId", model: User, select: "Name email phone imageUrl" })
+        .populate({ path: "jobId",    model: Job,  select: "title company"            })
         .lean(),
-      Candidate.countDocuments(filter),
-      // Pipeline counts across ALL statuses for this recruiter (ignore other filters)
-      Candidate.aggregate([
-        { $match: { recruiterId } },
-        { $group: { _id: "$status", count: { $sum: 1 } } },
-      ]),
+      Application.countDocuments(appFilter),
     ]);
 
-    const pipelineMap = new Map<string, number>(
-      (pipelineAgg as any[]).map((p) => [p._id, p.count])
-    );
-    const STAGES = [
-      "APPLIED","SCREENING","REVIEWING","INTERVIEW_SCHEDULED",
-      "OFFER","HIRED","ACCEPTED","REJECTED","WITHDRAWN",
-    ];
-    const pipeline = STAGES.map((stage) => ({
-      stage,
-      count: pipelineMap.get(stage) ?? 0,
+    const data = (applications as any[]).map((app) => ({
+      id:            app._id.toString(),
+      _id:           app._id.toString(),
+      applicationId: app._id.toString(),
+      seekerId:      app.seekerId?._id?.toString() ?? null,
+      name:          app.seekerId?.Name  ?? "Unknown",
+      email:         app.seekerId?.email ?? "",
+      phone:         app.seekerId?.phone ?? null,
+      avatar:        app.seekerId?.imageUrl ?? null,
+      jobId:         app.jobId?._id?.toString() ?? null,
+      jobTitle:      app.jobId?.title   ?? "Unknown Position",
+      company:       app.jobId?.company ?? "",
+      status:        app.status as ApplicationStatus,
+      rating:        app.rating  ?? 0,
+      experience:    app.experience ?? null,
+      skills:        app.skills  ?? [],
+      notes:         app.notes   ?? null,
+      resumeUrl:     app.resumeUrl   ?? null,
+      coverLetter:   app.coverLetter ?? null,
+      appliedAt:     app.appliedAt?.toISOString() ?? null,
     }));
 
-    // ── Job list for filter dropdown ──────────────────────────────────────
-    // Return the distinct jobs this recruiter has candidates for
-    const jobIds = await Candidate.distinct("jobId", { recruiterId });
-    const jobs = jobIds.length
-      ? await Job.find({ _id: { $in: jobIds } }).select("title").lean()
-      : [];
-
     return NextResponse.json({
-      data:     candidates.map(toShape),
+      data,
       total,
       page,
       limit,
-      pages:    Math.ceil(total / limit),
-      pipeline,
-      jobs:     (jobs as any[]).map((j) => ({ _id: j._id.toString(), title: j.title })),
+      pages: Math.ceil(total / limit),
+      jobs:  recruiterJobs.map((j) => ({ _id: j._id.toString(), title: j.title })),
     });
   } catch (error) {
     console.error("[GET /api/recruiter/candidates]", error);
@@ -134,9 +111,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ── PATCH /api/recruiter/candidates?id=<candidateId> ─────────────────────────
-// Updates both Candidate and the linked Application to keep them in sync.
-// Body: { status?, rating?, notes? }
+// ── PATCH /api/recruiter/candidates?id= ──────────────────────────────────────
 export async function PATCH(req: NextRequest) {
   try {
     await connectDB();
@@ -146,73 +121,55 @@ export async function PATCH(req: NextRequest) {
 
     const id = new URL(req.url).searchParams.get("id");
     if (!id || !mongoose.Types.ObjectId.isValid(id))
-      return NextResponse.json({ error: "Valid id required" }, { status: 400 });
+      return NextResponse.json({ error: "Valid application id required" }, { status: 400 });
 
-    // Ownership — recruiterId is stored on the Candidate document
-    const candidate = await Candidate.findById(id).lean() as any;
-    if (!candidate)
-      return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
-    if (candidate.recruiterId?.toString() !== auth.userId)
+    const { status }: { status: ApplicationStatus } = await req.json();
+
+    const validStatuses: ApplicationStatus[] = [
+      "APPLIED", "SCREENING", "REVIEWING", "INTERVIEW_SCHEDULED",
+      "OFFER", "HIRED", "ACCEPTED", "REJECTED", "WITHDRAWN",
+    ];
+    if (!validStatuses.includes(status))
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+
+    // Verify application belongs to this recruiter
+    const application = await Application.findById(id)
+      .populate({ path: "jobId", model: Job, select: "recruiterId" })
+      .lean() as any;
+
+    if (!application)
+      return NextResponse.json({ error: "Application not found" }, { status: 404 });
+    if (application.jobId?.recruiterId?.toString() !== auth.userId)
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
-    const body   = await req.json();
-    const update: any = {};
-    if (body.status !== undefined) update.status = body.status;
-    if (body.notes  !== undefined) update.notes  = body.notes?.trim() ?? null;
-    if (body.rating !== undefined) update.rating = Math.min(5, Math.max(1, Number(body.rating)));
+    await Application.findByIdAndUpdate(id, { $set: { status } });
 
-    if (!Object.keys(update).length)
-      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
-
-    // Update Candidate and mirror status/notes on the Application in parallel
-    const [updated] = await Promise.all([
-      Candidate.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true }).lean(),
-      candidate.applicationId
-        ? Application.findByIdAndUpdate(candidate.applicationId, {
-            $set: {
-              ...(update.status !== undefined && { status: update.status }),
-              ...(update.notes  !== undefined && { notes:  update.notes  }),
+    // ── On ACCEPTED: create a conversation if one doesn't exist yet ──────
+    if (status === "ACCEPTED") {
+      const seekerId = application.seekerId?.toString();
+      if (seekerId) {
+        await Conversation.findOneAndUpdate(
+          { applicationId: new mongoose.Types.ObjectId(id) },
+          {
+            $setOnInsert: {
+              applicationId:   new mongoose.Types.ObjectId(id),
+              recruiterId:     new mongoose.Types.ObjectId(auth.userId),
+              seekerId:        new mongoose.Types.ObjectId(seekerId),
+              messages:        [],
+              lastMessage:     "",
+              lastMessageAt:   new Date(),
+              unreadRecruiter: 0,
+              unreadJobSeeker: 0,
             },
-          })
-        : Promise.resolve(null),
-    ]);
+          },
+          { upsert: true, new: true }
+        );
+      }
+    }
 
-    return NextResponse.json(toShape(updated));
+    return NextResponse.json({ success: true, status });
   } catch (error) {
     console.error("[PATCH /api/recruiter/candidates]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
-}
-
-// ── DELETE /api/recruiter/candidates?id=<candidateId> ────────────────────────
-export async function DELETE(req: NextRequest) {
-  try {
-    await connectDB();
-    const auth = await getAuth();
-    if (!auth?.userId)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const id = new URL(req.url).searchParams.get("id");
-    if (!id || !mongoose.Types.ObjectId.isValid(id))
-      return NextResponse.json({ error: "Valid id required" }, { status: 400 });
-
-    const candidate = await Candidate.findById(id).lean() as any;
-    if (!candidate)
-      return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
-    if (candidate.recruiterId?.toString() !== auth.userId)
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-
-    // Remove both records
-    await Promise.all([
-      Candidate.findByIdAndDelete(id),
-      candidate.applicationId
-        ? Application.findByIdAndDelete(candidate.applicationId)
-        : Promise.resolve(null),
-    ]);
-
-    return new NextResponse(null, { status: 204 });
-  } catch (error) {
-    console.error("[DELETE /api/recruiter/candidates]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
