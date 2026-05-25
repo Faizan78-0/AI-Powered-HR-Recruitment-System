@@ -1,4 +1,5 @@
 // app/api/jobseeker/dashboard/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { cookies } from "next/headers";
@@ -35,7 +36,7 @@ export async function GET(_req: NextRequest) {
     const userId   = new mongoose.Types.ObjectId(decoded.userId);
     const todayStr = new Date().toISOString().split("T")[0]; // "YYYY-MM-DD"
 
-    // ── Step 1: seeker's application IDs ─────────────────────────────────
+    // ── Step 1: seeker's application IDs ─────────────────────────────────────
     const appDocs = await Application.find({ seekerId: userId })
       .select("_id")
       .lean() as Array<{ _id: mongoose.Types.ObjectId }>;
@@ -43,22 +44,20 @@ export async function GET(_req: NextRequest) {
     const appIds  = appDocs.map((a) => a._id);
     const hasApps = appIds.length > 0;
 
-    // ── Step 2: interview filters ─────────────────────────────────────────
-    // Using `as any` to bypass Mongoose enum strict-typing on `status` and
-    // `$or` shape — no runtime behaviour change.
+    // ── Step 2: interview filters ─────────────────────────────────────────────
     const ivFilter = (
       hasApps
         ? { $or: [{ candidateId: userId }, { applicationId: { $in: appIds } }] }
         : { candidateId: userId }
-    ) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    ) as any;
 
     const upcomingIvFilter = {
       ...ivFilter,
       status: "SCHEDULED",
       date:   { $gte: todayStr },
-    } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    } as any;
 
-    // ── Step 3: parallel queries ──────────────────────────────────────────
+    // ── Step 3: parallel queries ──────────────────────────────────────────────
     const [
       pipelineAgg,
       openJobsCount,
@@ -92,16 +91,20 @@ export async function GET(_req: NextRequest) {
         })
         .lean(),
 
-      User.findById(userId).select("Name email imageUrl role isverified").lean(),
+      // BUG FIX: select savedJobs so we can return the real count
+      User.findById(userId)
+        .select("Name email imageUrl role isverified savedJobs")
+        .lean(),
     ]);
 
-    // ── Stats ─────────────────────────────────────────────────────────────
+    // ── Stats ─────────────────────────────────────────────────────────────────
     const pipelineTyped     = pipelineAgg as { _id: string; count: number }[];
     const totalApplications = pipelineTyped.reduce((s, p) => s + p.count, 0);
 
     const pipelineMap = new Map<string, number>(
       pipelineTyped.map((p) => [p._id, p.count])
     );
+
     const STAGES: ApplicationStatus[] = [
       "APPLIED", "SCREENING", "OFFER", "HIRED", "REJECTED", "WITHDRAWN",
     ];
@@ -110,7 +113,7 @@ export async function GET(_req: NextRequest) {
       count: pipelineMap.get(stage) ?? 0,
     }));
 
-    // ── Recent applications ───────────────────────────────────────────────
+    // ── Recent applications ───────────────────────────────────────────────────
     const recentApplications = (recentAppsRaw as any[]).map((app) => ({
       ...app,
       _id:      app._id.toString(),
@@ -120,7 +123,7 @@ export async function GET(_req: NextRequest) {
         : null,
     }));
 
-    // ── Upcoming interviews ───────────────────────────────────────────────
+    // ── Upcoming interviews ───────────────────────────────────────────────────
     const upcomingInterviews: UpcomingInterview[] = (upcomingIvsRaw as any[]).map((iv) => {
       const job = iv.applicationId?.jobId;
       const typeMap: Record<string, string> = {
@@ -142,7 +145,7 @@ export async function GET(_req: NextRequest) {
       };
     });
 
-    // ── Profile completion (User fields only) ─────────────────────────────
+    // ── Profile completion ────────────────────────────────────────────────────
     let profileCompletion = 0;
     if (userRaw) {
       const u = userRaw as any;
@@ -152,10 +155,13 @@ export async function GET(_req: NextRequest) {
       );
     }
 
+    // BUG FIX: read real savedJobs count from the user document
+    const savedJobsCount = ((userRaw as any)?.savedJobs ?? []).length;
+
     const response: JobSeekerDashboard = {
       stats: {
         appliedJobs:   totalApplications,
-        savedJobs:     0,
+        savedJobs:     savedJobsCount,   // ← was always 0
         interviews:    scheduledIvCount,
         openPositions: openJobsCount,
       },

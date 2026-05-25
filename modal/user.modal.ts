@@ -9,18 +9,18 @@ export interface User extends Document {
   password: string;
   role: UserRole;
   imageUrl?: string;
-
   // Recruiter-specific fields
   jobTitle?: string;
   company?: string;
   bio?: string;
-
   // Job Seeker-specific fields
   headline?: string;
   seekerBio?: string;
   openToWork?: boolean;
   remotePreference?: "remote" | "hybrid" | "onsite";
-
+  // ── NEW: saved jobs ────────────────────────────────────────────────────
+  savedJobs?: mongoose.Types.ObjectId[];
+  // ──────────────────────────────────────────────────────────────────────
   signIn: Date;
   isverified: boolean;
   resetpasswordToken?: string;
@@ -47,7 +47,10 @@ const userSchema: Schema<User> = new Schema(
       unique: true,
       lowercase: true,
       trim: true,
-      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Please enter a valid email address"],
+      match: [
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+        "Please enter a valid email address",
+      ],
     },
     password: {
       type: String,
@@ -68,7 +71,7 @@ const userSchema: Schema<User> = new Schema(
       default: "Recruiter",
     },
 
-    // ── Recruiter fields ─────────────────────────────────────────────────────
+    // ── Recruiter fields ──────────────────────────────────────────────────
     jobTitle: {
       type: String,
       trim: true,
@@ -88,7 +91,7 @@ const userSchema: Schema<User> = new Schema(
       default: "",
     },
 
-    // ── Job Seeker fields ────────────────────────────────────────────────────
+    // ── Job Seeker fields ─────────────────────────────────────────────────
     headline: {
       type: String,
       trim: true,
@@ -110,8 +113,13 @@ const userSchema: Schema<User> = new Schema(
       enum: ["remote", "hybrid", "onsite"],
       default: "remote",
     },
+    // ── Saved jobs (Job Seeker only) ──────────────────────────────────────
+    savedJobs: {
+      type: [{ type: Schema.Types.ObjectId, ref: "Job" }],
+      default: [],
+    },
 
-    // ── Auth fields ──────────────────────────────────────────────────────────
+    // ── Auth fields ───────────────────────────────────────────────────────
     signIn: { type: Date, default: Date.now },
     isverified: { type: Boolean, default: false },
     resetpasswordToken: String,
