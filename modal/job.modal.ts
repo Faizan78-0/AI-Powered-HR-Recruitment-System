@@ -27,7 +27,6 @@ const JobSchema = new Schema<IJob>(
       type: Schema.Types.ObjectId, 
       ref: "User", 
       required: true,
-      index: true 
     },
     title: { type: String, required: true, trim: true },
     company: { type: String, required: true, trim: true },

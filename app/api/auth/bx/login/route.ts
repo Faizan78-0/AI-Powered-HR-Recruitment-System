@@ -38,9 +38,7 @@ export async function POST(req: Request) {
     user.signIn = new Date();
     await user.save();
 
-    await generateTokenAndSetCookie(user._id.toString(), "role");
-
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: true,
         user: {
@@ -49,6 +47,10 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
+
+    await generateTokenAndSetCookie(user._id.toString(), user.role, response);
+
+    return response;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json(

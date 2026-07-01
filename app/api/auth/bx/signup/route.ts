@@ -57,17 +57,20 @@ export async function POST(req: NextRequest) {
     });
 
     await user.save();
-    generateTokenAndSetCookie(user._id.toString(),role);
 
-    await sendVerificationEmail(user.email, verificationToken);
-
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: true,
         message: "User created successfully",
       },
       { status: 201 }
     );
+
+    await generateTokenAndSetCookie(user._id.toString(), role, response);
+
+    await sendVerificationEmail(user.email, verificationToken);
+
+    return response;
   } catch (error: unknown) {
     const err = error as Error;
 
